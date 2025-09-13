@@ -1015,15 +1015,15 @@
   const BETA  = 0.3;           // вес «долга»
   const KAPPA = 6;             // «жадность» softmax
   const Q_DOWN = 0.55;         // порог для понижения
-  const QUICK_RETRY_MS = 1*20*1000; // 0.3 минуты (внутрисессионный мягкий повтор)
+  const QUICK_RETRY_MS = 2*60*1000; // 2 минуты (внутрисессионный мягкий повтор)
   const ONE_DAY = 86400000;
 
   // ---- Настройки по умолчанию (можно переопределить через configure) ----
   const defaultSettings = Object.freeze({
     id: 'singleton',
     leitnerDays: [0, 1, 3, 7, 15, 30, 60],
-    toCHUNKS:   { minBox: 3, minShown: 5, minAcc: 0.85 },
-    toCOMPOSE:  { minBox: 2, minShown: 10, minAcc: 0.80 },
+    toCHUNKS:   { minBox: 3, minShown: 5, minAcc: 0.75 },
+    toCOMPOSE:  { minBox: 2, minShown: 10, minAcc: 0.70 },
     maxIntervalDays: 60,
     targetNewShare: 0.6
   });
@@ -1748,12 +1748,13 @@
       alignItems:'center',
       justifyContent:'center',
       fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial',
-      fontWeight:'700',
+      fontWeight:'800',
       letterSpacing:'0.02em',
       color: textColor,
       userSelect:'none',
       lineHeight:'1',
-      padding:'6px' // небольшой защитный отступ от разделителей
+      padding:'6px',
+      fontSize:'28px'
     });
   }
 
@@ -2546,6 +2547,18 @@
     const css = `
 .ex{ font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial; color:#0a1428; }
 @media (prefers-color-scheme: dark){ .ex{ color:#e5e7eb; } }
+.ex{
+  --ex-island-bg: #F4F5F7;
+  --ex-divider: rgba(0,0,0,.14);
+  --ex-text: #0A1428;
+}
+@media (prefers-color-scheme: dark){
+  .ex{
+    --ex-island-bg: #111827;
+    --ex-divider: rgba(255,255,255,.18);
+    --ex-text: #E5E7EB;
+  }
+}
 .ex .wrap{ width:100%; max-width:520px; margin:0 auto; padding:12px 12px 24px; }
 
 .ex .progress{ font-size:12px; opacity:.6; margin: 2px 2px 8px; }
@@ -2796,6 +2809,13 @@
     // Плюрал
     chPl.set(state.picks.plural || '—');
   }
+  function getThemeVars(scope){
+    const cs = getComputedStyle(scope || document.documentElement);
+    const bg   = (cs.getPropertyValue('--ex-island-bg')||'').trim() || '#F4F5F7';
+    const div  = (cs.getPropertyValue('--ex-divider')||'').trim()   || 'rgba(0,0,0,.14)';
+    const text = (cs.getPropertyValue('--ex-text')||'').trim()       || '#0A1428';
+    return { bg, div, text };
+  }
 
   // ---------- монтирование текущего шага ----------
   function mountStep(){
@@ -2806,10 +2826,14 @@
     if (state.widget && state.widget.destroy) try{ state.widget.destroy(); }catch(_){}
     clear(M);
 
+    const { bg, div, text } = getThemeVars(state.root);
+  
     if (s.widget === 'list'){
       const widget = window.createWordChoiceIsland({
-        items: s.options, // гарантированно 5
-        islandColor:'#F6F8FB', dividerColor:'#D8DFEB', textColor:'#0A1428',
+        items: s.options,
+        islandColor: bg,
+        dividerColor: div,
+        textColor:   text,
         width: Math.min(520, Math.floor(window.innerWidth - 24)),
         radius: 16,
         onSelect: ({index, value}) => handlePick(s, value)
@@ -2817,13 +2841,12 @@
       widget.mount(M);
       state.widget = widget;
     } else {
-      // keypad — items уже нормализованы 3..6
       const widget = window.KeypadIsland.create({
         mount: M,
         items: s.options,
-        islandColor:'#F4F5F7',
-        dividerColor:'rgba(0,0,0,.12)',
-        textColor:'#111',
+        islandColor: bg,
+        dividerColor: div,
+        textColor:   text,
         radius:16,
         tile: Math.max(80, Math.min(108, Math.floor((Math.min(520, window.innerWidth-24))/3 - 4))),
         onSelect: ({label}) => handlePick(s, label)
