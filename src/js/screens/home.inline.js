@@ -124,9 +124,9 @@ function build(container) {
   const bImport = el('button', 'btn', 'Импорт');
   const bImport600 = el('button', 'btn', 'Импортировать 600 самых популярных');
   const bImportAll = el('button', 'btn', 'Импортировать всё (1200+)');
-  const bAdd = el('button', 'btn', 'Добавить');
+  const bAdd = el('button', 'btn', 'Добавить слово');
   const bExport = el('button', 'btn', 'Экспорт');
-  const bDb = el('button', 'btn', 'База');
+  const bDb = el('button', 'btn', 'База слов');
   actions.append(bImport, bAdd, bExport, bDb);
 
   // round size row
@@ -137,11 +137,11 @@ function build(container) {
   const plus = el('button', 'icon', '+');
   left.append(minus, value, plus);
   const right = el('div');
-  right.appendChild(el('div', 'hint', 'число-упражнений-в-проходе'));
+  right.appendChild(el('div', 'hint', 'слов за раунд'));
   roundRow.append(left, right);
 
   // start button
-  const bGo = el('button', 'btn primary', 'Проход');
+  const bGo = el('button', 'btn primary', 'Поехали');
 
   // assemble
   wrap.append(
@@ -177,7 +177,7 @@ const state = {
   opts: {},
   statsWidget: null,
   hasData: false,
-  roundSize: 20
+  roundSize: 5
 };
 
 async function render() {
@@ -214,7 +214,7 @@ const api = {
     if (state.mounted) return;
     state.mounted = true;
     state.opts = opts || {};
-    state.roundSize = clamp(+opts.roundSize || 20, 3, 60);
+    state.roundSize = clamp(+opts.roundSize || 5, 2, 60);
 
     state.els = build(container);
 

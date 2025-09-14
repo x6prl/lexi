@@ -65,9 +65,9 @@ function build(container) {
 
   const top = el('div', 'top');
   const back = el('button', 'back', '←');
-  const ttl = el('div', 'ttl', 'База');
+  const ttl = el('div', 'ttl', 'База слов');
   top.append(back, ttl);
-  const sub = el('div', 'sub', 'все слова со статистикой');
+  const sub = el('div', 'sub', 'все доступные для изучения слова');
 
   const search = el('div', 'search');
   const input = document.createElement('input');

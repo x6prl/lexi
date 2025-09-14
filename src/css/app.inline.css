@@ -168,7 +168,7 @@ body{margin:0;font:16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu,
 .ex .wrap{ width:100%; max-width:520px; margin:0 auto; padding:12px 12px 24px; }
 
 .ex .progress{ font-size:12px; opacity:.6; margin: 2px 2px 8px; }
-.ex h1{ margin:8px 0 8px; font-size:28px; line-height:1.2; letter-spacing:.3px; font-weight:900; text-transform:uppercase; }
+.ex h1{ margin:8px 0 8px; font-size:28px; line-height:1.2; letter-spacing:.3px; font-weight:900; text-transform:uppercase; text-align: center; padding-top: 1rem; padding-bottom: 1rem; }
 
 .ex .chips{ display:flex; flex-direction:column; gap:8px; margin: 12px 0 10px; }
 .ex .chip{ align-self:flex-start; min-width:180px; width: 100%; padding:10px 14px; border-radius:12px;

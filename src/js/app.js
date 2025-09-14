@@ -20,7 +20,7 @@ const mountRoot = document.getElementById('root') ||
 // ---------- настройки (LS) ----------
 const LS_KEY = 'lexi.settings';
 const defaults = {
-  roundSize: 20
+  roundSize: 5
 };
 const settings = load();
 function load() {
