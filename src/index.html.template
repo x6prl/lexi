@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <link rel="manifest" href="manifest.webmanifest" type="application/manifest+json">
+  <meta name="theme-color" content="#000000">
+  <link rel="icon" href="icon-192.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>lexi — офлайн-тренажёр</title>
+
+  <!-- Inline CSS (вставляется build.sh) + базовый безопасный фолбэк -->
+  <style>
+    /* ===== INLINE CSS START ===== */
+    @@INLINE_CSS@@
+    /* ===== INLINE CSS END ===== */
+
+    /* Фолбэк на случай отсутствия/ошибки CSS */
+    :root { --bg:#0b0f14; --fg:#e5e7eb; }
+    @media (prefers-color-scheme: light) { :root { --bg:#ffffff; --fg:#111111; } }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", sans-serif;
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    }
+    #app { min-height: 100dvh; max-width: 920px; margin: 0 auto; padding: 16px; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    noscript { display:block; margin: 12px 0; padding: 10px 12px; background:#fff3f3; color:#c00; border-left:4px solid #c00; }
+  </style>
+</head>
+<body>
+  <!-- Ссылка для скринридеров и клавиатуры -->
+  <a class="sr-only" href="#root">Перейти к приложению</a>
+
+  <div id="app">
+    <noscript>Для работы этого офлайн-приложения нужен JavaScript.</noscript>
+    <!-- Сюда монтируются экраны из app.js -->
+    <main id="root" role="main" tabindex="-1"></main>
+  </div>
+
+  <!-- Inline JS (вставляется build.sh, порядок файлов задан в build.sh) -->
+  <script>
+    // ===== INLINE JS START =====
+    @@INLINE_JS@@
+    // ===== INLINE JS END =====
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(console.error);
+      });
+    }
+  </script>
+</body>
+</html>
+
