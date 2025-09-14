@@ -165,7 +165,7 @@ body{margin:0;font:16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu,
     --ex-text: #E5E7EB;
   }
 }
-.ex .wrap{ width:100%; max-width:520px; margin:0 auto; padding:12px 12px 24px; }
+.ex .wrap{ width:100%; max-width:520px; margin:0 auto; padding:12px 12px 24px; position: relative; min-height: 800px; }
 
 .ex .progress{ font-size:12px; opacity:.6; margin: 2px 2px 8px; }
 .ex h1{ margin:8px 0 8px; font-size:28px; line-height:1.2; letter-spacing:.3px; font-weight:900; text-transform:uppercase; text-align: center; padding-top: 1rem; padding-bottom: 1rem; }
@@ -184,6 +184,7 @@ body{margin:0;font:16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu,
 .ex .btn-back{
   width:100%; margin: 22px 0 0; min-height:52px; border:0; border-radius:14px; font-weight:900; letter-spacing:.2px;
   background:#eef1f6; color:#0a1428; cursor:pointer;
+  position: absolute; bottom: 0; left: 0; right: 0;
 }
 .ex .btn-back:disabled{ opacity:.5; cursor:default; }
 @media (prefers-color-scheme: dark){ .ex .btn-back{ background:#1b2130; color:#e5e7eb; } }

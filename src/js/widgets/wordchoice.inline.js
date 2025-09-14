@@ -5,7 +5,7 @@
 const STYLE_ID = 'wci-inline-style';
 const CSS = `
   .wci { position: relative; display: block; width: var(--wci-w, 600px);
-         aspect-ratio: 10 / 6; border-radius: var(--wci-r,16px);
+         aspect-ratio: 4 / 3; border-radius: var(--wci-r,16px);
          background: var(--wci-bg, #F5F7FA); overflow: hidden; }
   /* минимальная «воздушная» тень, не рамка */
   .wci::after { content:''; position:absolute; inset:0; pointer-events:none;
