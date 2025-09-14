@@ -56,19 +56,11 @@ async function importFromUrl(btn, url) {
     const res = await window.lexidb.importText(text);
     await render();  // обновит карточку dbStatistics
 
-    const errCount = res.errors?.length || 0;
-    const headErr = errCount ? `\nПримеры ошибок (первые 3):\n` +
-            res.errors.slice(0, 3)
-                .map(e => `#${e.blockIndex}: ${e.message}`)
-                .join('\n') :
-                               '';
-
     alert(
         `Импорт завершён:\n` +
         `+ добавлено: ${res.added}\n` +
         `~ обновлено: ${res.updated}\n` +
-        `= пропущено: ${res.skipped}\n` +
-        `! ошибок: ${errCount}${headErr}`);
+        `= пропущено: ${res.skipped}\n`);
     log('ImportByLink: success', res);
   } catch (e) {
     console.warn('[home] ImportByLink error', e);

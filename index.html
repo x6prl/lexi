@@ -2638,7 +2638,7 @@ async function importFromUrl(btn, url) {
   btn.textContent = 'Импорт...';
 
   try {
-    const resp = await fetch(url, {cache: 'no-store'});
+    const resp = await fetch(url, {mode: 'cors', cache: 'no-store'});
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const text = await resp.text();
 
