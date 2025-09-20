@@ -333,11 +333,10 @@ const review = {
 };
 
 function startReviewSequence(list) {
-  const onlyNouns = Array.isArray(list)
-      ? list.filter((item) => item && item.kind !== 'verb') : [];
-  if (!onlyNouns.length)
+  const actual = Array.isArray(list) ? list.slice() : [];
+  if (!actual.length)
     return startRound(settings.roundSize);
-  review.list = onlyNouns.slice();
+  review.list = actual;
   review.idx = 0;
   review.deleted = new Set();
   showOneResult();
