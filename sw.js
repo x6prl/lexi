@@ -1,4 +1,4 @@
-const CACHE = 'app-v1.3';
+const CACHE = 'app-v1.4';
 const ASSETS =
     ['./', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
@@ -9,11 +9,16 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys()
-                  .then(
-                      keys => Promise.all(
-                          keys.map(k => k !== CACHE ? caches.delete(k) : null)))
-                  .then(() => self.clients.claim()));
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+    await self.clients.claim();
+
+    const clients = await self.clients.matchAll({type: 'window', includeUncontrolled: true});
+    for (const client of clients) {
+      client.postMessage({type: 'SW_UPDATED', cache: CACHE});
+    }
+  })());
 });
 
 self.addEventListener('fetch', (e) => {
@@ -22,7 +27,8 @@ self.addEventListener('fetch', (e) => {
   if (e.request.mode === 'navigate' || e.request.destination === 'document') {
     e.respondWith((async () => {
       try {
-        const fresh = await fetch(e.request);
+        const fetchOpts = e.request.mode === 'navigate' ? {cache: 'reload'} : {};
+        const fresh = await fetch(e.request, fetchOpts);
         const copy = fresh.clone();
         (await caches.open(CACHE)).put(e.request, copy);
         return fresh;

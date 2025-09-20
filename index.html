@@ -5656,6 +5656,11 @@ window.app = {
 /* ===== END JS ===== */
     // ===== INLINE JS END =====
     if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'SW_UPDATED') {
+          window.location.reload();
+        }
+      });
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js').catch(console.error);
       });
@@ -5663,4 +5668,3 @@ window.app = {
   </script>
 </body>
 </html>
-
