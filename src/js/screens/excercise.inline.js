@@ -54,6 +54,38 @@ const clamp = U.clamp || ((x, min, max) => Math.max(min, Math.min(max, x)));
 const rndShuffle = (arr) =>
     arr.map(x => [Math.random(), x]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
 
+function hashSeed(...parts) {
+  let h = 2166136261 >>> 0;
+  for (const chunk of parts) {
+    const text = String(chunk ?? '');
+    for (let i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+  }
+  return h >>> 0;
+}
+
+function mulberry32(seed) {
+  let s = seed >>> 0;
+  return function() {
+    s += 0x6D2B79F5;
+    let t = s;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 2 ** 32;
+  };
+}
+
+function shuffleSeeded(arr, rng) {
+  const list = arr.slice();
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
+
 // ---------- состояние экрана ----------
 const state = {
   mounted: false,
@@ -392,7 +424,7 @@ async function createNounExerciseContext(term, mode) {
   return context;
 }
 
-function createVerbExerciseContext(card) {
+function createLegacyVerbContext(card) {
   const steps = createVerbSteps(card);
   const answers = {};
   const summaryConfig = [
@@ -489,6 +521,604 @@ function createVerbExerciseContext(card) {
       });
     }
     return {errors, success};
+  };
+
+  return context;
+}
+
+const VERB_SUMMARY = {
+  CASE_ENDING: {key: 'case', label: 'Падеж:'},
+  LEMMA: {key: 'lemmaSlot', label: 'Инфинитив:'},
+  PRAET: {key: 'praet', label: 'Präteritum:'},
+  PART2_AUX: {key: 'perfekt', label: 'Perfekt:'},
+  SYNTAX: {key: 'syntax', label: 'Порядок:'},
+  AUDIO: {key: 'audio', label: 'Аудио:'},
+  COLLOCATION: {key: 'collocation', label: 'Коллокация:'}
+};
+
+function presentAuxForm(aux) {
+  const up = String(aux || '').trim().toUpperCase();
+  if (up === 'SEIN') return 'ist';
+  if (up === 'SEIN/HABEN' || up === 'HABEN/SEIN') return 'ist/hat';
+  return 'hat';
+}
+
+function pickVerbFrame(frames, rng) {
+  if (!Array.isArray(frames) || frames.length === 0) return null;
+  const weights = frames.map((frame) => {
+    const freq = Number(frame && frame.frequency);
+    return Number.isFinite(freq) && freq > 0 ? freq : 1;
+  });
+  const total = weights.reduce((a, b) => a + b, 0);
+  if (total <= 0) return frames[0];
+  let r = rng() * total;
+  for (let i = 0; i < frames.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return frames[i];
+  }
+  return frames[0];
+}
+
+function promptForVerbSlot(slot, frame, card) {
+  switch (slot) {
+    case 'CASE_ENDING':
+      return frame?.probeMarker ? `Заполните пропуск: ${frame.probeMarker}` : 'Падеж';
+    case 'LEMMA':
+      return 'Выберите глагол';
+    case 'PRAET':
+      return 'Präteritum (er/sie/es)';
+    case 'PART2_AUX':
+      return 'Perfekt: вспомогательный + Partizip II';
+    case 'COLLOCATION':
+      return 'Выберите устойчивое сочетание';
+    case 'SYNTAX':
+      return 'Словоряд: выберите правильный вариант';
+    case 'AUDIO':
+      return 'Слушайте и выберите форму';
+    default:
+      return card?.cue || 'Выберите вариант';
+  }
+}
+
+function buildVerbCorrect(card, frame, slot) {
+  const morph = card?.morph || {};
+  switch (slot) {
+    case 'CASE_ENDING':
+      if (!frame?.probeAnswer) return null;
+      return {text: String(frame.probeAnswer), features: ['PREP_CASE', 'ARTICLE_DECL']};
+    case 'LEMMA':
+      if (!card?.lemma) return null;
+      return {text: String(card.lemma), features: []};
+    case 'PRAET':
+      if (!morph?.praet3sg) return null;
+      return {text: String(morph.praet3sg), features: ['ABLAUT']};
+    case 'PART2_AUX': {
+      const part2 = String(morph?.part2 || '').trim();
+      if (!part2) return null;
+      const aux = presentAuxForm(card?.aux);
+      const text = `${aux} ${part2}`.trim();
+      return {text, features: ['AUX_CHOICE', 'ABLAUT']};
+    }
+    case 'COLLOCATION': {
+      const col = Array.isArray(frame?.colls) ? frame.colls.find(Boolean) : null;
+      if (!col) return null;
+      return {text: String(col), features: []};
+    }
+    case 'SYNTAX': {
+      const part2 = String(morph?.part2 || '').trim();
+      const aux = presentAuxForm(card?.aux);
+      if (!part2) return null;
+      const clause = aux ? `weil er ${part2} ${aux}`.trim() : `weil er ${part2}`;
+      return {text: clause, features: ['SYNTAX_V2']};
+    }
+    default:
+      return null;
+  }
+}
+
+function normalizeOptionList(options) {
+  const out = [];
+  const seen = new Set();
+  (Array.isArray(options) ? options : []).forEach((opt) => {
+    const text = String(opt || '').trim();
+    if (!text || seen.has(text)) return;
+    seen.add(text);
+    out.push(text);
+  });
+  return out;
+}
+
+function gatherVerbDistractors(card, frame, slot, correctText) {
+  const spec = frame?.distractors && frame.distractors[slot];
+  const payload = spec && typeof spec.payload === 'object' ? spec.payload : {};
+  const out = [];
+  const push = (text) => {
+    const value = String(text || '').trim();
+    if (!value || value === correctText) return;
+    out.push({text: value});
+  };
+  if (slot === 'CASE_ENDING') {
+    normalizeOptionList(payload.endings).forEach(push);
+    normalizeOptionList(payload.wrongCases).forEach(push);
+  } else if (slot === 'LEMMA') {
+    normalizeOptionList(payload.neighbors).forEach(push);
+  } else if (slot === 'PRAET') {
+    normalizeOptionList(payload.wrongPraet).forEach(push);
+  } else if (slot === 'PART2_AUX') {
+    const morph = card?.morph || {};
+    const part2 = String(morph.part2 || '').trim();
+    const aux = presentAuxForm(card?.aux);
+    normalizeOptionList(payload.wrongPart2).forEach((wrongPart) => {
+      push(`${aux} ${wrongPart}`);
+    });
+    if (payload.wrongAux) {
+      const wrongAux = presentAuxForm(payload.wrongAux);
+      if (wrongAux.includes('/')) {
+        wrongAux.split('/').forEach((a) => push(`${a.trim()} ${part2}`));
+      } else {
+        push(`${wrongAux} ${part2}`);
+      }
+    }
+  } else if (slot === 'COLLOCATION') {
+    normalizeOptionList(payload.options).forEach(push);
+    if (Array.isArray(frame?.colls)) {
+      frame.colls.forEach((c) => { if (c && c !== correctText) push(c); });
+    }
+  } else if (slot === 'SYNTAX') {
+    normalizeOptionList(payload.errors).forEach(push);
+  }
+  return out;
+}
+
+function fallbackVerbDistractors(slot, correctText, card, frame) {
+  const variants = [];
+  const push = (text) => {
+    const value = String(text || '').trim();
+    if (!value || value === correctText) return;
+    variants.push({text: value});
+  };
+  if (slot === 'CASE_ENDING') {
+    if (/dem\b/i.test(correctText)) push(correctText.replace(/dem\b/i, 'den'));
+    if (/den\b/i.test(correctText)) push(correctText.replace(/den\b/i, 'dem'));
+    if (/em\b/i.test(correctText)) push(correctText.replace(/em\b/i, 'en'));
+    if (/en\b/i.test(correctText)) push(correctText.replace(/en\b/i, 'em'));
+  } else if (slot === 'LEMMA') {
+    if (correctText.endsWith('en')) push(correctText.slice(0, -2) + 't');
+    push(correctText + 'n');
+  } else if (slot === 'PRAET') {
+    if (!correctText.endsWith('te')) push(correctText + 'te');
+    push(correctText.replace(/ie/g, 'i'));
+  } else if (slot === 'PART2_AUX') {
+    const parts = correctText.split(/\s+/);
+    const aux = parts[0] || '';
+    const rest = parts.slice(1).join(' ');
+    if (rest.startsWith('ge')) push(`${aux} ${rest.slice(2)}`);
+    if (rest.endsWith('en')) push(`${aux} ${rest.slice(0, -2)}t`);
+    if (aux === 'hat') push(`ist ${rest}`);
+    if (aux === 'ist') push(`hat ${rest}`);
+  } else if (slot === 'COLLOCATION') {
+    if (frame?.cueDe) push(frame.cueDe.replace(/\(.+?\)/g, '').trim());
+  } else if (slot === 'SYNTAX') {
+    const morph = card?.morph || {};
+    const part2 = String(morph.part2 || '').trim();
+    push(`weil er ${presentAuxForm(card?.aux)} ${part2}`);
+    push(`weil er ${part2} ${presentAuxForm(card?.aux)}`);
+  }
+  return variants;
+}
+
+function selectVerbDistractors(card, frame, slot, correctText, rng, need = 3) {
+  const pool = gatherVerbDistractors(card, frame, slot, correctText);
+  const extra = fallbackVerbDistractors(slot, correctText, card, frame);
+  const seen = new Set();
+  const result = [];
+  const consider = pool.concat(extra);
+  consider.forEach((item) => {
+    if (result.length >= need) return;
+    const text = String(item?.text || '').trim();
+    if (!text || text === correctText || seen.has(text)) return;
+    seen.add(text);
+    result.push({text});
+  });
+  while (result.length < need) {
+    const mutated = `${correctText}*${result.length + 1}`;
+    if (!seen.has(mutated)) {
+      seen.add(mutated);
+      result.push({text: mutated});
+    } else {
+      break;
+    }
+  }
+  const ordered = shuffleSeeded(result, rng);
+  return ordered.slice(0, need);
+}
+
+function prepareVerbOptionsDeterministic(correctText, distractors, rng) {
+  const seen = new Set();
+  const all = [];
+  const add = (value) => {
+    const text = String(value || '').trim();
+    if (!text || seen.has(text)) return;
+    seen.add(text);
+    all.push(text);
+  };
+  add(correctText);
+  distractors.forEach((d) => add(d.text));
+  let filler = 1;
+  while (all.length < 4) {
+    add(`—${filler > 1 ? filler : ''}`);
+    filler++;
+  }
+  const shuffled = shuffleSeeded(all, rng);
+  const maxLen = shuffled.reduce((m, x) => Math.max(m, x.length), 0);
+  const widget = maxLen > 14 ? 'list' : 'keypad';
+  return {options: shuffled, widget};
+}
+
+function microHint(frame, slot, correctText) {
+  if (slot === 'CASE_ENDING') {
+    if (frame?.prepCase) return `${frame.prepCase} → ${correctText}`;
+    if (frame?.caseCore) return `${frame.caseCore}: ${correctText}`;
+  }
+  if (slot === 'PART2_AUX') {
+    if (String(correctText).startsWith('ist '))
+      return 'Движение/состояние → sein в Perfekt';
+    return 'Большинство глаголов → haben в Perfekt';
+  }
+  if (slot === 'LEMMA' && Array.isArray(frame?.contrasts) && frame.contrasts[0])
+    return frame.contrasts[0].note;
+  if (slot === 'PRAET') return 'Следите за аблаутом и окончанием -te/-en';
+  if (slot === 'COLLOCATION') return 'Найдите устойчивое сочетание';
+  if (slot === 'SYNTAX') return 'В придаточном глагол уходит в конец';
+  return 'Подумайте о форме и управлении';
+}
+
+function buildVerbStep(card, frame, slot, seedBase, index) {
+  const correct = buildVerbCorrect(card, frame, slot);
+  if (!correct || !correct.text) return null;
+  const rng = mulberry32(hashSeed(seedBase, slot, index));
+  const distractors = selectVerbDistractors(card, frame, slot, correct.text, rng, 3);
+  const {options, widget} =
+      prepareVerbOptionsDeterministic(correct.text, distractors, rng);
+  const summary = VERB_SUMMARY[slot] || {key: `slot-${index}`, label: slot};
+  const example = Array.isArray(frame?.examples) ? frame.examples.find(Boolean) : '';
+  return {
+    type: 'verb-step',
+    kind: 'verb',
+    slot,
+    prompt: promptForVerbSlot(slot, frame, card),
+    correct: correct.text,
+    correctMeta: correct,
+    options,
+    widget,
+    summaryKey: summary.key,
+    summaryLabel: summary.label,
+    hint: microHint(frame, slot, correct.text),
+    example,
+    features: correct.features || []
+  };
+}
+
+function runVerbValidations(frame, card, text) {
+  const lower = String(text || '').toLowerCase();
+  const checks = [];
+  const prepCase = String(frame?.prepCase || '').trim();
+  if (prepCase.includes('+')) {
+    const preposition = prepCase.split('+')[0].trim().toLowerCase();
+    if (preposition)
+      checks.push({
+        type: 'preposition',
+        ok: new RegExp(`\\b${preposition}\\b`).test(lower),
+        message: `предлог? → ${preposition}`
+      });
+  }
+  const caseCore = String(frame?.caseCore || '').toLowerCase();
+  if (caseCore.includes('dat')) {
+    const ok = /\b(den|dem|der|einem|einer|meinem|meiner|seinem|seiner|unserem|unserer|euren|eurem|ihrem|ihrer|zu)\b/.test(lower);
+    checks.push({type: 'case', ok, message: 'падеж? → Dativ'});
+  } else if (caseCore.includes('akk')) {
+    const ok = /\b(den|die|das|einen|eine|mein|deinen|seinen|ihn)\b/.test(lower);
+    checks.push({type: 'case', ok, message: 'падеж? → Akkusativ'});
+  }
+  const aux = presentAuxForm(card?.aux);
+  if (aux && !aux.includes('/')) {
+    const ok = new RegExp(`\\b${aux}\\b`).test(lower);
+    checks.push({type: 'aux', ok, message: `Perfekt? → ${aux} + Part II`});
+  }
+  const part2 = String(card?.morph?.part2 || '').toLowerCase();
+  if (part2)
+    checks.push({
+      type: 'part2',
+      ok: lower.includes(part2),
+      message: `Part II? → ${part2}`
+    });
+  return checks;
+}
+
+function buildVerbSummaryLine(card, frame) {
+  const lemma = String(card?.lemma || '').trim();
+  const probe = String(frame?.probeAnswer || '').trim();
+  const praet = String(card?.morph?.praet3sg || '').trim();
+  const part2 = String(card?.morph?.part2 || '').trim();
+  const aux = presentAuxForm(card?.aux);
+  const perfekt = part2 ? `${aux} ${part2}`.trim() : aux;
+  const left = probe ? `${probe} ${lemma}`.trim() : lemma;
+  const chunks = [left || lemma || '—', praet || '—', perfekt || '—'];
+  return chunks.join(' — ');
+}
+
+function createVerbExerciseContext(card, opts = {}) {
+  const frames = Array.isArray(card?.frames) ? card.frames.filter((f) => f && f.probeAnswer) : [];
+  if (!frames.length) return createLegacyVerbContext(card);
+  const seedBase = (typeof opts.seed === 'number' ? opts.seed : Date.now());
+  const baseSeed = hashSeed(seedBase, card?.id || card?.lemma || 'verb');
+  const rng = mulberry32(baseSeed);
+  const frame = pickVerbFrame(frames, rng) || frames[0];
+  const frameSeed = hashSeed(baseSeed, frame?.id || frame?.type || 'frame');
+
+  const slots = ['CASE_ENDING', 'LEMMA', 'PRAET', 'PART2_AUX'];
+  const extraCandidates = [];
+  if (Array.isArray(frame?.colls) && frame.colls.length) extraCandidates.push('COLLOCATION');
+  if (frame?.distractors?.SYNTAX || frame?.type) extraCandidates.push('SYNTAX');
+  if (extraCandidates.length) {
+    const extraRng = mulberry32(hashSeed(frameSeed, 'extra'));
+    const idx = Math.floor(extraRng() * extraCandidates.length) % extraCandidates.length;
+    slots.push(extraCandidates[idx]);
+  }
+
+  const steps = [];
+  slots.forEach((slot, idx) => {
+    const step = buildVerbStep(card, frame, slot, frameSeed, idx);
+    if (step) steps.push(step);
+  });
+
+  const productionStep = {
+    type: 'verb-production',
+    kind: 'verb',
+    slot: 'PRODUCTION',
+    widget: 'production',
+    prompt: 'Составьте предложение по рамке',
+    summaryKey: 'production',
+    summaryLabel: 'Предложение:',
+    productionHint: frame?.cueDe ? `Подсказка: ${frame.cueDe}` : 'Используйте глагол в своём предложении',
+    placeholder: frame?.cueDe || frame?.cueRu || ''
+  };
+  steps.push(productionStep);
+
+  const summaryConfig = [
+    {id: 'lemmaBase', label: 'Инфинитив:', initial: card?.lemma || card?.cue || card?.id || '—'}
+  ];
+  const addedSummary = new Set(['lemmaBase']);
+  steps.forEach((step) => {
+    if (!step.summaryKey || step.summaryKey === 'production') return;
+    if (addedSummary.has(step.summaryKey)) return;
+    summaryConfig.push({id: step.summaryKey, label: step.summaryLabel});
+    addedSummary.add(step.summaryKey);
+  });
+  summaryConfig.push({id: 'production', label: 'Предложение:'});
+
+  const answers = {
+    lemmaBase: {
+      picked: card?.lemma || card?.cue || card?.id || '—',
+      correct: card?.lemma || ''
+    }
+  };
+  const slotStates = {};
+  steps.forEach((step) => {
+    if (!step.summaryKey || step.summaryKey === 'production') return;
+    slotStates[step.summaryKey] = {
+      attempts: 0,
+      wrong: false,
+      firstWrong: null,
+      finalCorrect: null,
+      features: step.features || []
+    };
+  });
+  const productionState = {attempts: 0, text: '', validations: [], ok: false};
+
+  const context = {
+    kind: 'verb',
+    card,
+    frame,
+    steps,
+    title: frame?.cueRu || card?.translation || card?.cue || card?.lemma || 'Глагол',
+    summaryConfig
+  };
+
+  context.updateSummary = function(summaryItems) {
+    if (!summaryItems) return;
+    const lemmaItem = summaryItems.lemmaBase;
+    if (lemmaItem)
+      lemmaItem.set(card?.lemma || card?.cue || card?.id || '—');
+    steps.forEach((step) => {
+      if (!step.summaryKey) return;
+      const item = summaryItems[step.summaryKey];
+      if (!item) return;
+      if (step.summaryKey === 'production') {
+        const text = productionState.text || '';
+        item.set(text ? text : '•');
+        return;
+      }
+      const entry = answers[step.summaryKey];
+      const fallback = step.summaryKey === 'lemmaSlot' ? (card?.lemma || '•') : '•';
+      item.set(entry?.picked || fallback);
+    });
+  };
+
+  context.valueFor = function(step) {
+    if (!step) return null;
+    if (step.widget === 'production') return productionState.text;
+    if (!step.summaryKey) return null;
+    return answers[step.summaryKey]?.picked || null;
+  };
+
+  context.onPick = function(step, value) {
+    const picked = String(value ?? '');
+    const correct = String(step?.correct ?? '');
+    if (!step?.summaryKey || step.summaryKey === 'production')
+      return {ok: picked === correct};
+    const stateSlot = slotStates[step.summaryKey];
+    if (!stateSlot) return {ok: picked === correct};
+    stateSlot.attempts += 1;
+    const entry = answers[step.summaryKey] || {picked: null, correct, attempts: 0, wrongFirst: null};
+    entry.attempts = stateSlot.attempts;
+    entry.picked = picked;
+    entry.correct = correct;
+    const ok = picked === correct;
+    if (ok) {
+      stateSlot.finalCorrect = true;
+      answers[step.summaryKey] = entry;
+      return {ok: true, countError: false, feedback: ''};
+    }
+    if (!stateSlot.wrong) {
+      stateSlot.wrong = true;
+      stateSlot.firstWrong = picked;
+      entry.wrongFirst = picked;
+      answers[step.summaryKey] = entry;
+      const parts = [];
+      if (step.hint) parts.push(step.hint);
+      if (step.example) parts.push(step.example);
+      return {
+        ok: false,
+        countError: true,
+        retry: true,
+        feedback: parts.join(' ').trim() || 'Попробуйте ещё раз'
+      };
+    }
+    stateSlot.finalCorrect = false;
+    answers[step.summaryKey] = entry;
+    return {
+      ok: false,
+      countError: false,
+      retry: false,
+      feedback: `Верный ответ: ${correct}`
+    };
+  };
+
+  context.onBack = function(step) {
+    if (!step) return;
+    if (step.summaryKey === 'production') {
+      productionState.attempts = 0;
+      productionState.text = '';
+      productionState.validations = [];
+      productionState.ok = false;
+      delete answers.production;
+      return;
+    }
+    if (!step.summaryKey) return;
+    const init = slotStates[step.summaryKey];
+    if (init) {
+      init.attempts = 0;
+      init.wrong = false;
+      init.firstWrong = null;
+      init.finalCorrect = null;
+    }
+    delete answers[step.summaryKey];
+  };
+
+  context.errorsBefore = function(limit) {
+    let errs = 0;
+    for (let i = 0; i < limit; i++) {
+      const step = steps[i];
+      if (!step || !step.summaryKey || step.summaryKey === 'production') continue;
+      const slot = slotStates[step.summaryKey];
+      if (!slot) continue;
+      if (slot.wrong) errs++;
+    }
+    return errs;
+  };
+
+  context.onProductionSubmit = function(step, text) {
+    productionState.attempts += 1;
+    productionState.text = String(text || '').trim();
+    productionState.validations = runVerbValidations(frame, card, productionState.text);
+    productionState.ok = productionState.validations.every((v) => v.ok !== false);
+    answers.production = {
+      picked: productionState.text,
+      correct: '',
+      attempts: productionState.attempts,
+      ok: productionState.ok
+    };
+    const retry = !productionState.ok && productionState.attempts < 2;
+    return {
+      ok: productionState.ok,
+      retry,
+      advance: !retry,
+      feedback: productionState.ok ? 'Отлично!' : 'Проверьте подсказки и поправьте.',
+      validations: productionState.validations
+    };
+  };
+
+  context.finish = async function({onDone}) {
+    let errors = 0;
+    const answersMap = {};
+    const correctMap = {};
+    const slotDetails = {};
+    const stepResults = [];
+    steps.forEach((step) => {
+      if (step.summaryKey === 'production') return;
+      if (!step.summaryKey) return;
+      const slot = slotStates[step.summaryKey];
+      const entry = answers[step.summaryKey];
+      answersMap[step.summaryKey] = entry ? entry.picked : null;
+      correctMap[step.summaryKey] = step.correct;
+      if (slot) {
+        slotDetails[step.summaryKey] = {
+          attempts: slot.attempts,
+          wrong: slot.wrong,
+          firstWrong: slot.firstWrong,
+          finalCorrect: slot.finalCorrect,
+          features: slot.features
+        };
+        if (slot.wrong) errors += 1;
+      }
+      stepResults.push({
+        key: step.summaryKey,
+        label: step.summaryLabel,
+        picked: answersMap[step.summaryKey],
+        correct: step.correct,
+        wrong: slot ? slot.wrong : false,
+        finalCorrect: slot ? slot.finalCorrect === true : (answersMap[step.summaryKey] === step.correct)
+      });
+    });
+    const success = errors === 0;
+    const summaryLine = buildVerbSummaryLine(card, frame);
+    const payload = {
+      kind: 'verb',
+      card,
+      frame,
+      success,
+      errors,
+      answers: answersMap,
+      correct: correctMap,
+      slots: slotDetails,
+      production: {
+        text: productionState.text,
+        validations: productionState.validations,
+        ok: productionState.ok,
+        attempts: productionState.attempts
+      },
+      summaryLine,
+      example: Array.isArray(frame?.examples) ? frame.examples[0] || '' : '',
+      stepResults,
+      translation: card?.translation || '',
+      cue: frame?.cueDe || ''
+    };
+
+    log('done verb:', {
+      id: card?.id,
+      frame: frame?.id || frame?.type,
+      success,
+      errors
+    });
+    try {
+      if (card?.id && window.verbdb?.recordResult)
+        window.verbdb.recordResult(card.id, success);
+    } catch (e) {
+      console.warn('[exercise] verb recordResult failed', e);
+    }
+    if (typeof onDone === 'function') onDone(payload);
+    return {errors, success, payload};
   };
 
   return context;
@@ -627,6 +1257,10 @@ function buildUI(container, title, progress, summaryConfig) {
   const mount = el('div', 'mount');
   wrap.appendChild(mount);
 
+  const feedback = el('div', 'ex-feedback', '');
+  feedback.setAttribute('aria-live', 'polite');
+  wrap.appendChild(feedback);
+
   const btnBack = el('button', 'btn-back', 'НАЗАД');
   btnBack.disabled = false;  // раньше было true
   btnBack.title = 'Назад';
@@ -660,6 +1294,7 @@ function buildUI(container, title, progress, summaryConfig) {
     layoutBackdrop: layouts.backdrop,
     summaryRoot: summary.root,
     mount,
+    feedback,
     btnBack
   };
   state.summary = summary;
@@ -675,6 +1310,7 @@ function buildUI(container, title, progress, summaryConfig) {
       summary: summary.root,
       prompt,
       mount,
+      feedback,
       backBtn: btnBack,
       layoutModal: layouts.root,
       layoutBackdrop: layouts.backdrop,
@@ -709,6 +1345,17 @@ function getThemeVars(scope) {
   return {bg, div, text};
 }
 
+function setFeedback(message, mode) {
+  if (!state.els || !state.els.feedback) return;
+  const base = 'ex-feedback';
+  if (mode) {
+    state.els.feedback.className = `${base} ${base}--${mode}`;
+  } else {
+    state.els.feedback.className = base;
+  }
+  state.els.feedback.textContent = message ? String(message) : '';
+}
+
 // ---------- монтирование текущего шага ----------
 function mountStep() {
   const s = state.steps[state.stepIndex];
@@ -724,6 +1371,7 @@ function mountStep() {
     } catch (_) {
     }
   clear(M);
+  setFeedback('');
 
   const {bg, div, text} = getThemeVars(state.root);
 
@@ -738,6 +1386,9 @@ function mountStep() {
       onSelect: ({index, value}) => handlePick(s, value)
     });
     widget.mount(M);
+    state.widget = widget;
+  } else if (s.widget === 'production') {
+    const widget = createProductionWidget(M, s);
     state.widget = widget;
   } else {
     const widget = window.KeypadIsland.create({
@@ -763,15 +1414,103 @@ function mountStep() {
   state.layout?.schedule('step');
 }
 
+function createProductionWidget(mount, step) {
+  const wrap = el('div', 'ex-production');
+  wrap.style.display = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.gap = '12px';
+  const helper = el('div', 'ex-production__hint',
+                   step.productionHint ||
+                       'Составьте короткое предложение по рамке.');
+  const textarea = document.createElement('textarea');
+  textarea.className = 'ex-production__input';
+  textarea.rows = 3;
+  textarea.placeholder = step.placeholder || '';
+  textarea.style.padding = '12px';
+  textarea.style.fontSize = '16px';
+  textarea.style.borderRadius = '12px';
+  const submit = el('button', 'ex-production__submit', 'ГОТОВО');
+  submit.type = 'button';
+  submit.style.alignSelf = 'flex-start';
+  submit.style.padding = '10px 18px';
+  submit.style.borderRadius = '12px';
+  const validationsRoot = el('div', 'ex-production__checks');
+
+  wrap.append(helper, textarea, submit, validationsRoot);
+  mount.appendChild(wrap);
+
+  const renderValidations = (items) => {
+    clear(validationsRoot);
+    if (!Array.isArray(items) || !items.length) return;
+    const list = el('ul');
+    items.forEach((item) => {
+      if (!item || !item.message) return;
+      const li = el('li', item.ok ? 'ok' : 'warn', item.message);
+      list.appendChild(li);
+    });
+    validationsRoot.appendChild(list);
+  };
+
+  const applyInitial = () => {
+    const value = state.context?.valueFor?.(step);
+    if (typeof value === 'string') textarea.value = value;
+    if (Array.isArray(step.initialValidations))
+      renderValidations(step.initialValidations);
+  };
+
+  const submitHandler = () => {
+    if (!state.context || typeof state.context.onProductionSubmit !== 'function')
+      return;
+    const text = textarea.value || '';
+    const res = state.context.onProductionSubmit(step, text);
+    if (!res) return;
+    renderValidations(res.validations || []);
+    if (res.feedback)
+      setFeedback(res.feedback, res.ok ? 'ok' : (res.retry ? 'warn' : 'err'));
+    if (res.advance) {
+      updateSummaryView();
+      if (state.stepIndex < state.steps.length - 1) {
+        state.stepIndex++;
+        mountStep();
+      } else {
+        finishCurrentExercise();
+      }
+    }
+  };
+
+  submit.addEventListener('click', submitHandler);
+  textarea.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      submitHandler();
+    }
+  });
+
+  applyInitial();
+
+  return {
+    destroy() {
+      submit.removeEventListener('click', submitHandler);
+    }
+  };
+}
+
 // ---------- обработчик выбора варианта ----------
 function handlePick(step, value) {
   if (!state.context) return;
   const result = state.context.onPick(step, value) || {};
   const ok = (typeof result.ok === 'boolean') ? result.ok :
               (String(value) === String(step.correct));
-  if (!ok) state.errors++;
+  const countError = ('countError' in result) ? !!result.countError : !ok;
+  if (countError) state.errors++;
+  if (result.feedback)
+    setFeedback(result.feedback, ok ? 'ok' : 'warn');
 
   updateSummaryView();
+
+  if (result.retry) return;
+
+  if (result.advance === false) return;
 
   // следующий шаг или завершение
   if (state.stepIndex < state.steps.length - 1) {
@@ -862,7 +1601,7 @@ async function loadPayload(opts) {
   if (!state.container) state.container = target;
 
   if (opts && opts.kind === 'verb' && opts.card) {
-    const context = createVerbExerciseContext(opts.card);
+    const context = createVerbExerciseContext(opts.card, {seed});
     state.context = context;
     state.steps = context.steps || [];
     state.errors = 0;

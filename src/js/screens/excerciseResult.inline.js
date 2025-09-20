@@ -179,13 +179,135 @@ function metric(label) {
   return {col, k, v};
 }
 
+function buildVerb(container) {
+  clear(container);
+
+  const root = el('section', 'exres verb');
+  const screen = el('div', 'screen');
+
+  const top = el('div', 'top');
+  const ttl = el('div', 'ttl', 'Результат (глагол)');
+  const badge = el('div', 'badge');
+  top.append(ttl, badge);
+
+  const translation = el('div', 'verb-translation', '—');
+  translation.style.fontSize = '20px';
+  translation.style.marginTop = '18px';
+
+  const summary = el('div', 'verb-summary', '—');
+  summary.style.marginTop = '12px';
+  summary.style.fontWeight = '700';
+
+  const steps = el('div', 'verb-steps');
+  steps.style.marginTop = '18px';
+  steps.style.display = 'flex';
+  steps.style.flexDirection = 'column';
+  steps.style.gap = '12px';
+
+  const example = el('div', 'verb-example');
+  example.style.marginTop = '12px';
+  example.style.fontSize = '15px';
+  example.style.opacity = '0.8';
+
+  const prodCard = el('section', 'card verb-production');
+  const prodH = el('h3', null, 'Микро-продукция');
+  const prodText = el('div', 'verb-prod-text', '—');
+  const prodChecks = el('ul', 'verb-prod-checks');
+  prodChecks.style.marginTop = '8px';
+  prodChecks.style.paddingLeft = '20px';
+  prodChecks.style.listStyle = 'disc';
+  prodCard.append(prodH, prodText, prodChecks);
+
+  const foot = el('p', 'foot', 'Тапните в любом месте, чтобы перейти к следующему');
+
+  screen.append(top, translation, summary, steps, example, prodCard, foot);
+  root.appendChild(screen);
+  container.appendChild(root);
+
+  return {
+    root,
+    screen,
+    badge,
+    translation,
+    summary,
+    steps,
+    example,
+    prodText,
+    prodChecks
+  };
+}
+
+function fillVerb(els, payload) {
+  const {success, summaryLine, stepResults = [], production = {}, example, translation, cue} = payload;
+  els.badge.className = 'badge ' + (success ? 'good' : 'bad');
+  els.badge.textContent = success ? '✓ Все верно' : '✕ Есть ошибки';
+
+  const title = translation || cue || payload.frame?.cueRu || payload.card?.translation || payload.card?.cue || payload.card?.lemma || 'Глагол';
+  els.translation.textContent = title;
+  els.summary.textContent = summaryLine || '—';
+
+  clear(els.steps);
+  stepResults.forEach((step) => {
+    const row = el('div', 'verb-step');
+    const status = step.wrong ? (step.finalCorrect ? 'retry' : 'wrong') : 'ok';
+    row.className = `verb-step verb-step--${status}`;
+    row.style.padding = '12px 16px';
+    row.style.borderRadius = '14px';
+    row.style.background = status === 'ok' ? '#ebf8ff' : (status === 'retry' ? '#fef3c7' : '#fee2e2');
+    row.style.display = 'flex';
+    row.style.flexDirection = 'column';
+    row.style.gap = '4px';
+    const label = el('div', 'verb-step__label', step.label || step.key || 'Шаг');
+    label.style.fontSize = '14px';
+    label.style.opacity = '0.75';
+    const picked = el('div', 'verb-step__picked', step.picked || '—');
+    picked.style.fontSize = '18px';
+    picked.style.fontWeight = '600';
+    row.append(label, picked);
+    if (step.wrong && step.correct && step.correct !== step.picked) {
+      const corr = el('div', 'verb-step__correct', `Верно: ${step.correct}`);
+      corr.style.fontSize = '14px';
+      corr.style.opacity = '0.8';
+      row.appendChild(corr);
+    }
+    els.steps.appendChild(row);
+  });
+
+  if (example) {
+    els.example.textContent = `Пример: ${example}`;
+    els.example.style.display = '';
+  } else {
+    els.example.textContent = '';
+    els.example.style.display = 'none';
+  }
+
+  const text = production.text || '';
+  els.prodText.textContent = text ? text : '—';
+  clear(els.prodChecks);
+  const validations = Array.isArray(production.validations) ? production.validations : [];
+  if (validations.length) {
+    validations.forEach((v) => {
+      if (!v || !v.message) return;
+      const li = el('li', v.ok ? 'ok' : 'warn', v.message);
+      li.style.color = v.ok ? '#047857' : '#b91c1c';
+      els.prodChecks.appendChild(li);
+    });
+  } else {
+    const li = el('li', 'neutral', production.ok ? 'Валидации пройдены' : 'Подсказок нет');
+    li.style.color = '#374151';
+    els.prodChecks.appendChild(li);
+  }
+}
+
 // ---- состояние/экспорт ----
 const state = {
   mounted: false,
   els: null,
   onNext: null,
   onEdit: null,
-  payload: null
+  payload: null,
+  mode: 'noun',
+  clickHandler: null
 };
 
 async function fill(els, payload) {
@@ -239,6 +361,23 @@ const api = {
     state.onNext = typeof onNext === 'function' ? onNext : null;
     state.onEdit = typeof onEdit === 'function' ? onEdit : null;
 
+    const mode = payload && payload.kind === 'verb' ? 'verb' : 'noun';
+    state.mode = mode;
+
+    if (mode === 'verb') {
+      const els = buildVerb(container);
+      state.els = els;
+      const handler = (e) => {
+        e.stopPropagation();
+        if (state.onNext) state.onNext();
+      };
+      els.screen.addEventListener('click', handler);
+      state.clickHandler = {node: els.screen, fn: handler};
+      fillVerb(els, payload);
+      log('mounted result verb', {id: payload.card?.id, ok: payload.success});
+      return;
+    }
+
     const els = build(container);
     state.els = els;
 
@@ -247,11 +386,12 @@ const api = {
       e.stopPropagation();
       if (state.onEdit) state.onEdit(payload.term.id);
     });
-    // Тап по экрану — дальше
-    els.screen.addEventListener('click', (e) => {
+    const handler = (e) => {
       if (e.target === els.btnEdit) return;
       if (state.onNext) state.onNext();
-    });
+    };
+    els.screen.addEventListener('click', handler);
+    state.clickHandler = {node: els.screen, fn: handler};
 
     await fill(els, payload);
     log('mounted result', {id: payload.term.id, ok: payload.success});
@@ -260,6 +400,9 @@ const api = {
   destroy() {
     if (!state.mounted) return;
     state.mounted = false;
+    if (state.clickHandler && state.clickHandler.node) {
+      state.clickHandler.node.removeEventListener('click', state.clickHandler.fn);
+    }
     if (state.els && state.els.root && state.els.root.parentNode) {
       state.els.root.parentNode.removeChild(state.els.root);
     }
@@ -267,6 +410,8 @@ const api = {
     state.onNext = null;
     state.onEdit = null;
     state.payload = null;
+    state.clickHandler = null;
+    state.mode = 'noun';
     log('destroyed');
   }
 };

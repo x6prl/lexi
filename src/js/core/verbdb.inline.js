@@ -101,6 +101,48 @@ function questionsFromFrame(raw, frame) {
   return out;
 }
 
+function normaliseFrame(rawFrame, idx) {
+  if (!rawFrame || typeof rawFrame !== 'object') return null;
+  const type = String(rawFrame.type || '').trim();
+  const cueRu = String(rawFrame.cueRu || rawFrame.translation || '').trim();
+  const cueDe = String(rawFrame.cueDe || '').trim();
+  const caseCore = String(rawFrame.caseCore || '').trim();
+  const prepCase = String(rawFrame.prepCase || '').trim();
+  const probeMarker = String(rawFrame.probeMarker || '').trim();
+  const probeAnswer = String(rawFrame.probeAnswer || '').trim();
+  const frequency = Number(rawFrame.frequency || 0) || 0;
+  const examples = Array.isArray(rawFrame.examples) ?
+      rawFrame.examples.map(x => String(x || '').trim()).filter(Boolean) : [];
+  const colls = Array.isArray(rawFrame.colls) ?
+      rawFrame.colls.map(x => String(x || '').trim()).filter(Boolean) : [];
+  const contrasts = Array.isArray(rawFrame.contrasts) ?
+      rawFrame.contrasts.map((c) => {
+        if (!c || typeof c !== 'object') return null;
+        const note = String(c.note || c.text || '').trim();
+        if (!note) return null;
+        return {note};
+      }).filter(Boolean) : [];
+  const distractors = rawFrame.distractors && typeof rawFrame.distractors === 'object'
+      ? JSON.parse(JSON.stringify(rawFrame.distractors))
+      : {};
+  const id = String(rawFrame.id || rawFrame.key || `frame-${idx}`).trim();
+  return {
+    id: id || `frame-${idx}`,
+    type,
+    cueRu,
+    cueDe,
+    caseCore,
+    prepCase,
+    probeMarker,
+    probeAnswer,
+    frequency,
+    examples,
+    colls,
+    contrasts,
+    distractors
+  };
+}
+
 function normaliseCard(raw, idx) {
   if (!raw) return null;
   const lemma = String(raw.lemma || raw.verb || '').trim();
@@ -110,8 +152,15 @@ function normaliseCard(raw, idx) {
   let questionsRaw = Array.isArray(raw.questions)
       ? raw.questions.slice()
       : Array.isArray(raw.slots) ? raw.slots.slice() : [];
-  if ((!questionsRaw || questionsRaw.length === 0) && Array.isArray(raw.frames)) {
-    raw.frames.forEach((frame) => {
+  const frames = [];
+  if (Array.isArray(raw.frames)) {
+    raw.frames.forEach((frame, idx) => {
+      const norm = normaliseFrame(frame, idx);
+      if (norm) frames.push(norm);
+    });
+  }
+  if ((!questionsRaw || questionsRaw.length === 0) && frames.length) {
+    frames.forEach((frame) => {
       questionsRaw = questionsRaw.concat(questionsFromFrame(raw, frame));
     });
   }
@@ -121,19 +170,36 @@ function normaliseCard(raw, idx) {
     if (norm) questions.push(norm);
   });
   if (!id || !cue || questions.length === 0) return null;
+  const aux = String(raw.aux || '').trim();
+  const morph = raw && raw.morph && typeof raw.morph === 'object'
+      ? {
+          praet3sg: String(raw.morph.praet3sg || '').trim(),
+          part2: String(raw.morph.part2 || '').trim(),
+          pres3sg: String(raw.morph.pres3sg || '').trim(),
+          stem: String(raw.morph.stem || '').trim()
+        }
+      : {praet3sg: '', part2: '', pres3sg: '', stem: ''};
   return {
     id,
     lemma,
     cue,
     translation,
-    questions
+    questions,
+    aux,
+    morph,
+    frames
   };
 }
 
 function listCards() {
   const cards = loadJSON(STORAGE_KEY, []);
   if (!Array.isArray(cards)) return [];
-  return cards.map(card => ({...card, questions: (card.questions || []).map(q => ({...q, options: (q.options || []).slice()}))}));
+  return cards.map(card => ({
+    ...card,
+    questions: (card.questions || []).map(q => ({...q, options: (q.options || []).slice()})),
+    frames: (card.frames || []).map(frame => ({...frame, distractors: frame.distractors ? JSON.parse(JSON.stringify(frame.distractors)) : {}})),
+    morph: card.morph ? {...card.morph} : {praet3sg: '', part2: '', pres3sg: '', stem: ''}
+  }));
 }
 
 function getCard(id) {
