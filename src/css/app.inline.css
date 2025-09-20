@@ -140,6 +140,40 @@ body{margin:0;font:16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu,
 }
 .dbl .list{ margin-top:8px; display:flex; flex-direction:column; gap:10px; }
 
+.dbl .dbl__item{ background:var(--card); border-radius:16px; box-shadow:0 8px 20px rgba(0,0,0,.06); overflow:hidden; }
+@media (prefers-color-scheme: dark){
+  .dbl .dbl__item{ box-shadow:0 12px 28px rgba(0,0,0,.28); }
+}
+.dbl .dbl__item db-item-statistics{ display:block; }
+
+.dbl .dbl__stage{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 14px 12px;
+  border-top:1px solid var(--line);
+  font-size:13px;
+  color:var(--muted);
+  background:var(--card);
+  flex-wrap:wrap;
+}
+.dbl .dbl__stage-label{ font-weight:600; letter-spacing:.02em; }
+.dbl .dbl__stage-select{
+  flex:0 0 auto;
+  min-width:150px;
+  border-radius:10px;
+  border:1px solid var(--line);
+  background:var(--bg);
+  color:var(--ink);
+  padding:6px 10px;
+  font-weight:600;
+}
+.dbl .dbl__stage-select:disabled{ opacity:.6; cursor:default; }
+.dbl .dbl__stage-status{ margin-left:auto; font-size:12px; font-weight:600; color:var(--muted); }
+.dbl .dbl__stage-status[data-state="pending"]{ color:var(--muted); }
+.dbl .dbl__stage-status[data-state="success"]{ color:#16a34a; }
+.dbl .dbl__stage-status[data-state="error"]{ color:var(--danger); }
+
 .dbl .wipe{ display:flex; align-items:center; justify-content:flex-start;
             gap:10px; padding:12px 14px; border-radius:12px; cursor:pointer;
             background:var(--card); box-shadow:0 8px 20px rgba(0,0,0,.06); }

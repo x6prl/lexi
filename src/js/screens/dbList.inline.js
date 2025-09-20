@@ -56,6 +56,186 @@ function sumShown(st) {
   return (+st?.M?.n || 0) + (+st?.C?.n || 0) + (+st?.P?.n || 0);
 }
 
+const STAGE_OPTIONS = [
+  {value: 'MC5', label: 'MC5'}, {value: 'CHUNKS', label: 'CHUNKS'},
+  {value: 'COMPOSE', label: 'COMPOSE'}
+];
+const STAGE_SET = new Set(STAGE_OPTIONS.map(o => o.value));
+const STAGE_SEQUENCE = STAGE_OPTIONS.map(o => o.value);
+
+function stageIndex(stage) {
+  const idx = STAGE_SEQUENCE.indexOf(stage);
+  return idx >= 0 ? idx : 0;
+}
+
+function stageFromStats(stats) {
+  const stage = stats && typeof stats.stage === 'string' ? stats.stage : null;
+  return STAGE_SET.has(stage) ? stage : STAGE_OPTIONS[0].value;
+}
+
+async function fetchStats(termId) {
+  const engine = window.cardengine;
+  if (engine && typeof engine.getStatsSafe === 'function')
+    return await engine.getStatsSafe(termId);
+  const raw = await window.lexidb.getStats(termId);
+  if (raw) return raw;
+  return await window.lexidb.ensureStats(termId);
+}
+
+function wakeMode(ms, now) {
+  if (!ms) return;
+  ms.last = now;
+  ms.due = now;
+  if (!(ms.S > 0)) ms.S = 0.5;
+  if (typeof ms.q !== 'number' || Number.isNaN(ms.q)) ms.q = 0.5;
+  if (typeof ms.streak !== 'number') ms.streak = 0;
+}
+
+function inheritProgress(src, dst, now) {
+  if (!dst) return;
+  if (src) {
+    if (typeof src.q === 'number' && !Number.isNaN(src.q))
+      dst.q = Math.max(typeof dst.q === 'number' ? dst.q : 0.5, src.q);
+    if (typeof src.S === 'number' && src.S > 0)
+      dst.S = Math.max(dst.S && dst.S > 0 ? dst.S : 0.5, src.S * 0.8);
+    if (typeof src.streak === 'number') dst.streak = Math.min(src.streak, 3);
+  }
+  if (!(dst.S > 0)) dst.S = 0.5;
+  if (typeof dst.q !== 'number' || Number.isNaN(dst.q)) dst.q = 0.5;
+  if (typeof dst.streak !== 'number') dst.streak = 0;
+  wakeMode(dst, now);
+}
+
+async function updateStageForTerm(termId, nextStage) {
+  if (!STAGE_SET.has(nextStage)) throw new Error('неподдерживаемый режим');
+  await window.lexidb.open?.();
+  const stats = await fetchStats(termId);
+  if (!stats) throw new Error('не удалось получить статистику слова');
+
+  // Всегда убеждаемся, что структуры режимов существуют
+  stats.M = stats.M || {};
+  stats.C = stats.C || {};
+  stats.P = stats.P || {};
+
+  const prevStage = stageFromStats(stats);
+  const now = Date.now();
+
+  if (!stats.intro) {
+    stats.intro = true;
+    wakeMode(stats.M, now);
+  }
+
+  const prevIdx = stageIndex(prevStage);
+  const nextIdx = stageIndex(nextStage);
+
+  if (nextIdx > prevIdx) {
+    // ручное повышение режима
+    if (nextStage === 'CHUNKS') {
+      inheritProgress(stats.M, stats.C, now);
+    } else if (nextStage === 'COMPOSE') {
+      if (prevStage === 'MC5') inheritProgress(stats.M, stats.C, now);
+      inheritProgress(
+          prevStage === 'COMPOSE' ? stats.P : stats.C, stats.P, now);
+    }
+  } else if (nextIdx < prevIdx) {
+    // ручное понижение → «разбудим» целевой режим
+    if (nextStage === 'CHUNKS') {
+      wakeMode(stats.C, now);
+    } else if (nextStage === 'MC5') {
+      wakeMode(stats.M, now);
+    }
+  } else {
+    // режим тот же → просто актуализируем сроки
+    if (nextStage === 'MC5') wakeMode(stats.M, now);
+    if (nextStage === 'CHUNKS') wakeMode(stats.C, now);
+    if (nextStage === 'COMPOSE') wakeMode(stats.P, now);
+  }
+
+  stats.stage = nextStage;
+  await window.lexidb.putStats(stats);
+  return stats;
+}
+
+function createStageControls(term, stats) {
+  const container = el('div', 'dbl__stage');
+  const label = el('span', 'dbl__stage-label', 'Режим:');
+  const select = document.createElement('select');
+  select.className = 'dbl__stage-select';
+  const status = el('span', 'dbl__stage-status');
+
+  const currentStage = stageFromStats(stats);
+  for (const opt of STAGE_OPTIONS) {
+    const option = document.createElement('option');
+    option.value = opt.value;
+    option.textContent = opt.label;
+    select.appendChild(option);
+  }
+  select.value = currentStage;
+
+  let statusTimer = null;
+  function setStatus(kind, text) {
+    if (statusTimer) {
+      clearTimeout(statusTimer);
+      statusTimer = null;
+    }
+    if (!status.isConnected) return;
+    if (kind)
+      status.dataset.state = kind;
+    else
+      status.removeAttribute('data-state');
+    status.textContent = text || '';
+    if (text && kind && kind !== 'pending') {
+      const delay = kind === 'error' ? 2600 : 1400;
+      statusTimer = setTimeout(() => {
+        if (!status.isConnected) return;
+        status.textContent = '';
+        status.removeAttribute('data-state');
+      }, delay);
+    }
+  }
+
+  select.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+  });
+
+  select.addEventListener('change', async (ev) => {
+    ev.stopPropagation();
+    const nextStage = ev.target.value;
+    const prevStage = stageFromStats(stats);
+    if (!nextStage || nextStage === prevStage) return;
+    select.disabled = true;
+    setStatus('pending', 'Сохраняю…');
+    let changed = false;
+    try {
+      await updateStageForTerm(term.id, nextStage);
+      stats.stage = nextStage;
+      changed = true;
+      setStatus('success', 'Готово');
+    } catch (err) {
+      console.error('[dbList] stage change error', err);
+      select.value = prevStage;
+      setStatus('error', 'Ошибка');
+      alert(
+          'Не удалось изменить режим: ' +
+          (err && err.message ? err.message : err));
+    }
+    if (!changed) {
+      select.disabled = false;
+      return;
+    }
+    try {
+      await api.update();
+    } catch (err) {
+      console.error('[dbList] stage refresh error', err);
+    } finally {
+      select.disabled = false;
+    }
+  });
+
+  container.append(label, select, status);
+  return container;
+}
+
 // ---------- DOM build ----------
 function build(container) {
   clear(container);
@@ -88,10 +268,21 @@ function build(container) {
 async function readAll() {
   await window.lexidb.open?.();
   const terms = await window.lexidb.allTerms();
-  // читаем статы пачкой
-  const stats = await Promise.all(terms.map(
-      t => window.lexidb.getStats(t.id).then(
-          s => s || window.lexidb.ensureStats(t.id))));
+  // читаем статы пачкой, отдаём предпочтение нормализованным данным ядра
+  const stats = await Promise.all(terms.map(async (t) => {
+    try {
+      const st = await fetchStats(t.id);
+      return st || null;
+    } catch (err) {
+      console.error('[dbList] stats fetch error', t.id, err);
+      try {
+        return await window.lexidb.ensureStats(t.id);
+      } catch (inner) {
+        console.error('[dbList] ensure stats error', t.id, inner);
+        return null;
+      }
+    }
+  }));
   // склеиваем
   const rows = terms.map((t, i) => ({term: t, stats: stats[i]}));
   // сортировка по слову
@@ -116,6 +307,7 @@ function renderRows(rows, q) {
     const s = Object.assign({}, stats || {});
     // добавим stage/shown (для виджета)
     s.shown = sumShown(stats);
+    s.stage = stageFromStats(stats);
 
     const row = window.dbItemStatistics.create({
       term: formatTerm(term),
@@ -126,7 +318,10 @@ function renderRows(rows, q) {
       }
     });
 
-    state.els.list.appendChild(row);
+    const item = el('div', 'dbl__item');
+    item.appendChild(row);
+    item.appendChild(createStageControls(term, stats || {}));
+    state.els.list.appendChild(item);
     shown++;
   }
 

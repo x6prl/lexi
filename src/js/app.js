@@ -274,11 +274,8 @@ function showOneResult() {
       onEdit: (termId) => {
         showDbItemEdit(termId, {
           from: 'exres',
-          onBack: () => showOneResult(),
-          onSaved: () => showOneResult(),
           onDeleted: () => {
             review.deleted.add(termId);
-            showOneResult();
           }
         });
       }
@@ -310,22 +307,22 @@ function showDbItemAdd() {
 function showDbItemEdit(termId, {from, onBack, onSaved, onDeleted} = {}) {
   router.go('dbItemEdit', () => {
     const ed = window.screens.dbItemEdit;
+    const goBack = () => {
+      if (typeof onBack === 'function') return onBack();
+      if (from === 'list') return showDbList();
+      if (from === 'exres') return showOneResult();
+      showHome();
+    };
     ed.mount(mountRoot, {
       termId,
-      onBack: () => {
-        if (typeof onBack === 'function') return onBack();
-        if (from === 'list') return showDbList();
-        if (from === 'exres') return showOneResult();
-        showHome();
-      },
+      onBack: goBack,
       onSaved: () => {
         if (typeof onSaved === 'function') onSaved();
+        goBack();
       },
       onDeleted: () => {
         if (typeof onDeleted === 'function') onDeleted();
-        if (from === 'list') return showDbList();
-        if (from === 'exres') return showOneResult();
-        showHome();
+        goBack();
       }
     });
     return ed;
