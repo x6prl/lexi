@@ -181,7 +181,8 @@ function showHome() {
       onDb: () => showDbList(),
       onAdd: () => showDbItemAdd(),
       onImport: () => doImport(),
-      onExport: () => doExport()
+      onExport: () => doExport(),
+      onVerbs: () => showVerbs()
     });
     (async () => {
       try {
@@ -191,6 +192,20 @@ function showHome() {
       }
     })();
     return api;
+  });
+}
+
+function showVerbs() {
+  router.go('verbs', () => {
+    const api = window.screens.verbs;
+    if (!api || typeof api.mount !== 'function') {
+      alert('Экран глаголов недоступен');
+      showHome();
+      return null;
+    }
+    return api.mount(mountRoot, {
+      onBack: () => showHome()
+    });
   });
 }
 

@@ -9,16 +9,25 @@
        // Helpers
        applyPlural, pluralOf,
        // meta
-       version: '2.0.0-final'
+       version: '2.1.0-verbs-prep'
      }
 */
 (function() {
 'use strict';
 
 const DB_NAME = 'lexi.v2';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_TERMS = 'terms';
 const STORE_STATS = 'stats';
+// --- verbs extension stores (v = verbs) ---
+const STORE_VERBS = 'verbs';
+const STORE_MORPH = 'morph';
+const STORE_FRAMES = 'frames';
+const STORE_COLLS = 'colls';
+const STORE_CONTRASTS = 'contrasts';
+const STORE_DISTRACTORS = 'distractors';
+const STORE_VSTATS = 'vstats';
+const STORE_VATTEMPTS = 'vattempts';
 
 const ALLOWED_ART = new Set(['der', 'die', 'das']);
 const ALLOWED_PL = new Set([
@@ -53,6 +62,44 @@ function open() {
         const os = db.createObjectStore(STORE_STATS, {keyPath: 'id'});
         os.createIndex('intro', 'intro', {unique: false});
         os.createIndex('stage', 'stage', {unique: false});
+      }
+      // ---- verbs layer ----
+      if (!db.objectStoreNames.contains(STORE_VERBS)) {
+        const verbs = db.createObjectStore(STORE_VERBS, {keyPath: 'id'});
+        verbs.createIndex('lemma', 'lemma', {unique: true});
+      }
+      if (!db.objectStoreNames.contains(STORE_MORPH)) {
+        const morph = db.createObjectStore(STORE_MORPH, {keyPath: 'id'});
+        morph.createIndex('verbId', 'verbId', {unique: true});
+      }
+      if (!db.objectStoreNames.contains(STORE_FRAMES)) {
+        const frames = db.createObjectStore(STORE_FRAMES, {keyPath: 'id'});
+        frames.createIndex('verbId', 'verbId');
+        frames.createIndex('type', 'type');
+        frames.createIndex('frequency', 'frequency');
+      }
+      if (!db.objectStoreNames.contains(STORE_COLLS)) {
+        const colls = db.createObjectStore(STORE_COLLS, {keyPath: 'id'});
+        colls.createIndex('frameId', 'frameId');
+      }
+      if (!db.objectStoreNames.contains(STORE_CONTRASTS)) {
+        const contrasts = db.createObjectStore(STORE_CONTRASTS, {keyPath: 'id'});
+        contrasts.createIndex('frameId', 'frameId');
+      }
+      if (!db.objectStoreNames.contains(STORE_DISTRACTORS)) {
+        const dist = db.createObjectStore(STORE_DISTRACTORS, {keyPath: 'id'});
+        dist.createIndex('frameId', 'frameId');
+        dist.createIndex('slot', 'slot');
+      }
+      if (!db.objectStoreNames.contains(STORE_VSTATS)) {
+        const stats = db.createObjectStore(STORE_VSTATS, {keyPath: 'id'});
+        stats.createIndex('dueAt', 'due', {unique: false});
+      }
+      if (!db.objectStoreNames.contains(STORE_VATTEMPTS)) {
+        const attempts = db.createObjectStore(STORE_VATTEMPTS, {keyPath: 'id'});
+        attempts.createIndex('frameId', 'frameId');
+        attempts.createIndex('slot', 'slot');
+        attempts.createIndex('createdAt', 'createdAt');
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -447,7 +494,7 @@ const api = {
   applyPlural,
   pluralOf,
 
-  version: '2.0.0-final'
+  version: '2.1.0-verbs-prep'
 };
 
 // attach

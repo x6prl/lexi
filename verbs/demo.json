@@ -1,0 +1,88 @@
+[
+  {
+    "lemma": "helfen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "half",
+      "part2": "geholfen",
+      "pres3sg": "hilft",
+      "stem": "helf"
+    },
+    "frames": [
+      {
+        "type": "DAT_VERB",
+        "cueRu": "помочь кому-то",
+        "cueDe": "jemandem helfen",
+        "caseCore": "Dativ",
+        "probeMarker": "jemand? helfen",
+        "probeAnswer": "jemandem",
+        "examples": [
+          "Kannst du mir helfen?",
+          "Er hilft dem Kind."
+        ],
+        "frequency": 90,
+        "colls": ["jemandem helfen", "dem Kind helfen"],
+        "contrasts": [
+          {"note": "helfen (Dat) ≠ unterstützen (Akk)"}
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": {"endings": ["jemanden", "jemand"]}
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {"wrongPart2": ["helfte"], "morphNoise": ["helfte"]}
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {"wrongAux": "sein", "wrongPart2": ["gehelft"]}
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "warten",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "wartete",
+      "part2": "gewartet",
+      "pres3sg": "wartet",
+      "stem": "wart"
+    },
+    "frames": [
+      {
+        "type": "PREP_AKK",
+        "cueRu": "ждать чего-то/кого-то",
+        "cueDe": "auf etwas warten",
+        "prepCase": "auf + Akk",
+        "probeMarker": "Wir warten ___ Bus.",
+        "probeAnswer": "auf den",
+        "examples": [
+          "Ich warte auf die Antwort.",
+          "Wir warten auf den Zug."
+        ],
+        "frequency": 85,
+        "colls": ["auf den Zug warten", "auf die Antwort warten"],
+        "contrasts": [
+          {"note": "warten auf (Akk) ≠ erwarten (Akk, без предлога)"}
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": {"endings": ["auf dem", "auf der"]}
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": {"neighbors": ["erwarten"]}
+          },
+          "PART2_AUX": {
+            "strategy": "MORPH_NOISE",
+            "payload": {"wrongPart2": ["gewartenen"], "wrongAux": "sein"}
+          }
+        }
+      }
+    ]
+  }
+]
