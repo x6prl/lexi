@@ -3828,22 +3828,26 @@ function attachBackHandler() {
   state.root.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      onBackClick();
+      exitToHome();
     }
   });
   state.els.btnBack.addEventListener('click', onBackClick);
 }
 
+function exitToHome() {
+  try {
+    state.onDone && state.onDone({aborted: true});
+  } catch (_) {
+  }
+  try {
+    window.app?.goHome?.();
+  } catch (_) {
+  }
+}
+
 function onBackClick() {
   if (state.stepIndex <= 0) {
-    try {
-      state.onDone && state.onDone({aborted: true});
-    } catch (_) {
-    }
-    try {
-      window.app?.goHome?.();
-    } catch (_) {
-    }
+    exitToHome();
     return;
   }
   // обычный шаг назад
@@ -4573,8 +4577,7 @@ function sumShown(st) {
 }
 
 const STAGE_OPTIONS = [
-  {value: 'MC5', label: 'MC5'},
-  {value: 'CHUNKS', label: 'CHUNKS'},
+  {value: 'MC5', label: 'MC5'}, {value: 'CHUNKS', label: 'CHUNKS'},
   {value: 'COMPOSE', label: 'COMPOSE'}
 ];
 const STAGE_SET = new Set(STAGE_OPTIONS.map(o => o.value));
@@ -4651,7 +4654,8 @@ async function updateStageForTerm(termId, nextStage) {
       inheritProgress(stats.M, stats.C, now);
     } else if (nextStage === 'COMPOSE') {
       if (prevStage === 'MC5') inheritProgress(stats.M, stats.C, now);
-      inheritProgress(prevStage === 'COMPOSE' ? stats.P : stats.C, stats.P, now);
+      inheritProgress(
+          prevStage === 'COMPOSE' ? stats.P : stats.C, stats.P, now);
     }
   } else if (nextIdx < prevIdx) {
     // ручное понижение → «разбудим» целевой режим
@@ -4695,8 +4699,10 @@ function createStageControls(term, stats) {
       statusTimer = null;
     }
     if (!status.isConnected) return;
-    if (kind) status.dataset.state = kind;
-    else status.removeAttribute('data-state');
+    if (kind)
+      status.dataset.state = kind;
+    else
+      status.removeAttribute('data-state');
     status.textContent = text || '';
     if (text && kind && kind !== 'pending') {
       const delay = kind === 'error' ? 2600 : 1400;
@@ -4729,7 +4735,9 @@ function createStageControls(term, stats) {
       console.error('[dbList] stage change error', err);
       select.value = prevStage;
       setStatus('error', 'Ошибка');
-      alert('Не удалось изменить режим: ' + (err && err.message ? err.message : err));
+      alert(
+          'Не удалось изменить режим: ' +
+          (err && err.message ? err.message : err));
     }
     if (!changed) {
       select.disabled = false;
@@ -5668,6 +5676,10 @@ function nextExercise() {
     ex.mount(mountRoot, {
       progress: {index: session.index + 1, total: session.size},  // опционально
       onDone: (payload) => {
+        if (payload && payload.aborted) {
+          session.running = false;
+          return;
+        }
         session.results.push(payload);
         session.index += 1;
         nextExercise();
