@@ -56,9 +56,7 @@ JS_BUNDLE="$TMP_DIR/bundle.js"
 join_js "$JS_BUNDLE" \
   "$JS_DIR/core/utils.inline.js" \
   "$JS_DIR/core/lexidb.inline.js" \
-  "$JS_DIR/core/rng.inline.js" \
   "$JS_DIR/core/verbdb.inline.js" \
-  "$JS_DIR/core/verbtrainer.inline.js" \
   "$JS_DIR/core/lexiparts.inline.js" \
   "$JS_DIR/core/cardengine.inline.js" \
   "$JS_DIR/widgets/dbStatistics.inline.js" \

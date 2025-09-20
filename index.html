@@ -290,25 +290,16 @@ else if (typeof globalThis !== 'undefined')
        // Helpers
        applyPlural, pluralOf,
        // meta
-       version: '2.1.0-verbs-prep'
+       version: '2.0.0-final'
      }
 */
 (function() {
 'use strict';
 
 const DB_NAME = 'lexi.v2';
-const DB_VERSION = 2;
+const DB_VERSION = 1;
 const STORE_TERMS = 'terms';
 const STORE_STATS = 'stats';
-// --- verbs extension stores (v = verbs) ---
-const STORE_VERBS = 'verbs';
-const STORE_MORPH = 'morph';
-const STORE_FRAMES = 'frames';
-const STORE_COLLS = 'colls';
-const STORE_CONTRASTS = 'contrasts';
-const STORE_DISTRACTORS = 'distractors';
-const STORE_VSTATS = 'vstats';
-const STORE_VATTEMPTS = 'vattempts';
 
 const ALLOWED_ART = new Set(['der', 'die', 'das']);
 const ALLOWED_PL = new Set([
@@ -343,44 +334,6 @@ function open() {
         const os = db.createObjectStore(STORE_STATS, {keyPath: 'id'});
         os.createIndex('intro', 'intro', {unique: false});
         os.createIndex('stage', 'stage', {unique: false});
-      }
-      // ---- verbs layer ----
-      if (!db.objectStoreNames.contains(STORE_VERBS)) {
-        const verbs = db.createObjectStore(STORE_VERBS, {keyPath: 'id'});
-        verbs.createIndex('lemma', 'lemma', {unique: true});
-      }
-      if (!db.objectStoreNames.contains(STORE_MORPH)) {
-        const morph = db.createObjectStore(STORE_MORPH, {keyPath: 'id'});
-        morph.createIndex('verbId', 'verbId', {unique: true});
-      }
-      if (!db.objectStoreNames.contains(STORE_FRAMES)) {
-        const frames = db.createObjectStore(STORE_FRAMES, {keyPath: 'id'});
-        frames.createIndex('verbId', 'verbId');
-        frames.createIndex('type', 'type');
-        frames.createIndex('frequency', 'frequency');
-      }
-      if (!db.objectStoreNames.contains(STORE_COLLS)) {
-        const colls = db.createObjectStore(STORE_COLLS, {keyPath: 'id'});
-        colls.createIndex('frameId', 'frameId');
-      }
-      if (!db.objectStoreNames.contains(STORE_CONTRASTS)) {
-        const contrasts = db.createObjectStore(STORE_CONTRASTS, {keyPath: 'id'});
-        contrasts.createIndex('frameId', 'frameId');
-      }
-      if (!db.objectStoreNames.contains(STORE_DISTRACTORS)) {
-        const dist = db.createObjectStore(STORE_DISTRACTORS, {keyPath: 'id'});
-        dist.createIndex('frameId', 'frameId');
-        dist.createIndex('slot', 'slot');
-      }
-      if (!db.objectStoreNames.contains(STORE_VSTATS)) {
-        const stats = db.createObjectStore(STORE_VSTATS, {keyPath: 'id'});
-        stats.createIndex('dueAt', 'due', {unique: false});
-      }
-      if (!db.objectStoreNames.contains(STORE_VATTEMPTS)) {
-        const attempts = db.createObjectStore(STORE_VATTEMPTS, {keyPath: 'id'});
-        attempts.createIndex('frameId', 'frameId');
-        attempts.createIndex('slot', 'slot');
-        attempts.createIndex('createdAt', 'createdAt');
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -775,7 +728,7 @@ const api = {
   applyPlural,
   pluralOf,
 
-  version: '2.1.0-verbs-prep'
+  version: '2.0.0-final'
 };
 
 // attach
@@ -787,810 +740,155 @@ else if (typeof globalThis !== 'undefined')
 
 /* ===== END JS ===== */
 
-/* ===== BEGIN JS: src/js/core/rng.inline.js ===== */
-(function() {
-'use strict';
-
-function hashSeed(...parts) {
-  let h = 2166136261 >>> 0;
-  for (const part of parts) {
-    const text = String(part ?? '');
-    for (let i = 0; i < text.length; i++) {
-      h ^= text.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-      h >>>= 0;
-    }
-  }
-  return h >>> 0;
-}
-
-function mulberry32(seed) {
-  let s = seed >>> 0;
-  return function() {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ t >>> 15, t | 1);
-    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
-    return ((t ^ t >>> 14) >>> 0) / 4294967296;
-  };
-}
-
-function shuffleSeeded(arr, rng) {
-  const out = Array.isArray(arr) ? arr.slice() : [];
-  if (typeof rng !== 'function') rng = Math.random;
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    const tmp = out[i];
-    out[i] = out[j];
-    out[j] = tmp;
-  }
-  return out;
-}
-
-window.verbrng = {hashSeed, mulberry32, shuffleSeeded};
-})();
-
-/* ===== END JS ===== */
-
 /* ===== BEGIN JS: src/js/core/verbdb.inline.js ===== */
 (function() {
 'use strict';
 
-const STORE_VERBS = 'verbs';
-const STORE_MORPH = 'morph';
-const STORE_FRAMES = 'frames';
-const STORE_COLLS = 'colls';
-const STORE_CONTRASTS = 'contrasts';
-const STORE_DISTRACTORS = 'distractors';
-const STORE_VSTATS = 'vstats';
-const STORE_VATTEMPTS = 'vattempts';
+const STORAGE_KEY = 'lexi.verbs.cards.v1';
+const PROGRESS_KEY = 'lexi.verbs.progress.v1';
 
-const DEFAULTS = {
-  S0: 0.60,
-  q0: 0.5,
-  streak0: 0,
-  tau: 0.9
-};
-
-function open() {
-  if (!window.lexidb || typeof window.lexidb.open !== 'function') {
-    return Promise.reject(new Error('lexidb not initialised'));
-  }
-  return window.lexidb.open();
-}
-
-function withStores(mode, names, fn) {
-  return open().then(db => new Promise((resolve, reject) => {
-    const tx = db.transaction(names, mode);
-    const stores = names.map(n => tx.objectStore(n));
-    let done = false;
-    function finish(val) {
-      if (!done) {
-        done = true;
-        resolve(val);
-      }
-    }
-    tx.onabort = tx.onerror = () => {
-      if (!done) {
-        done = true;
-        reject(tx.error);
-      }
-    };
-    Promise.resolve(fn.apply(null, stores)).then(finish).catch(err => {
-      try {
-        tx.abort();
-      } catch (_) {
-      }
-      reject(err);
-    });
-  }));
-}
-
-function reqAsPromise(req) {
-  return new Promise((resolve, reject) => {
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-function uid(prefix) {
-  const base = prefix ? String(prefix) : 'id';
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return `${base}:${crypto.randomUUID()}`;
-  }
-  const rnd = Math.random().toString(36).slice(2, 10);
-  const ts = Date.now().toString(36);
-  return `${base}:${ts}:${rnd}`;
-}
-
-async function getIndexKeys(store, indexName, key) {
-  const index = store.index(indexName);
-  if ('getAllKeys' in index) {
-    return await reqAsPromise(index.getAllKeys(key));
-  }
-  const out = [];
-  await new Promise((resolve, reject) => {
-    const req = index.openKeyCursor(key);
-    req.onsuccess = (e) => {
-      const cur = e.target.result;
-      if (!cur) return resolve();
-      out.push(cur.primaryKey);
-      cur.continue();
-    };
-    req.onerror = () => reject(req.error);
-  });
-  return out;
-}
-
-async function deleteByKeys(store, keys) {
-  for (const key of keys || []) {
-    await reqAsPromise(store.delete(key));
-  }
-}
-
-async function importJSON(text) {
-  let data;
+function loadJSON(key, fallback) {
   try {
-    data = JSON.parse(String(text || ''));
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
   } catch (e) {
-    throw new Error('Некорректный JSON: ' + (e && e.message));
+    console.warn('[verbdb] failed to parse', key, e);
+    return fallback;
   }
-  if (!Array.isArray(data)) {
-    throw new Error('JSON импорта должен быть массивом глаголов');
+}
+
+function saveJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn('[verbdb] failed to store', key, e);
   }
-  const summary = {added: 0, updated: 0, frames: 0};
-
-  await withStores(
-      'readwrite',
-      [STORE_VERBS, STORE_MORPH, STORE_FRAMES, STORE_COLLS, STORE_CONTRASTS,
-       STORE_DISTRACTORS, STORE_VSTATS, STORE_VATTEMPTS],
-      async (verbs, morph, frames, colls, contrasts, distractors, vstats,
-             vattempts) => {
-        for (const rawVerb of data) {
-          if (!rawVerb || typeof rawVerb.lemma !== 'string') continue;
-          const lemma = rawVerb.lemma.trim();
-          if (!lemma) continue;
-          const verbId = rawVerb.id || lemma;
-          const existing = await reqAsPromise(verbs.get(verbId));
-          if (existing) summary.updated++; else summary.added++;
-
-          await verbs.put({
-            id: verbId,
-            lemma,
-            aux: rawVerb.aux || 'HABEN',
-            tags: rawVerb.tags || [],
-            createdAt: existing?.createdAt || Date.now(),
-            updatedAt: Date.now()
-          });
-
-          const morphId = verbId;
-          await morph.put({
-            id: morphId,
-            verbId,
-            ...(rawVerb.morph || {})
-          });
-
-          // cleanup existing frames + related records
-          const frameKeys = await getIndexKeys(frames, 'verbId', verbId);
-          for (const fk of frameKeys) {
-            const collKeys = await getIndexKeys(colls, 'frameId', fk);
-            await deleteByKeys(colls, collKeys);
-            const contrastKeys = await getIndexKeys(contrasts, 'frameId', fk);
-            await deleteByKeys(contrasts, contrastKeys);
-            const distKeys = await getIndexKeys(distractors, 'frameId', fk);
-            await deleteByKeys(distractors, distKeys);
-            const attemptKeys = await getIndexKeys(vattempts, 'frameId', fk);
-            await deleteByKeys(vattempts, attemptKeys);
-            await reqAsPromise(vstats.delete(fk));
-            await reqAsPromise(frames.delete(fk));
-          }
-
-          const framesList = Array.isArray(rawVerb.frames) ? rawVerb.frames : [];
-          for (let idx = 0; idx < framesList.length; idx++) {
-            const frame = framesList[idx];
-            const frameId = frame.id || `${verbId}#${idx}`;
-            const base = {
-              id: frameId,
-              verbId,
-              type: frame.type || 'DAT_VERB',
-              cueRu: frame.cueRu || '',
-              cueDe: frame.cueDe || '',
-              caseCore: frame.caseCore || '',
-              prepCase: frame.prepCase || '',
-              probeMarker: frame.probeMarker || '',
-              probeAnswer: frame.probeAnswer || '',
-              examples: Array.isArray(frame.examples) ? frame.examples : [],
-              frequency: frame.frequency == null ? 50 : +frame.frequency,
-              metadata: frame.metadata || {}
-            };
-            await reqAsPromise(frames.put(base));
-            summary.frames++;
-
-            const collList = Array.isArray(frame.colls) ? frame.colls : [];
-            for (let i = 0; i < collList.length; i++) {
-              const text = collList[i];
-              await reqAsPromise(colls.put({
-                id: `${frameId}|coll|${i}`,
-                frameId,
-                text: String(text || '')
-              }));
-            }
-
-            const contrastList = Array.isArray(frame.contrasts) ? frame.contrasts : [];
-            for (let i = 0; i < contrastList.length; i++) {
-              const item = contrastList[i];
-              await reqAsPromise(contrasts.put({
-                id: `${frameId}|contrast|${i}`,
-                frameId,
-                note: typeof item === 'string' ? item : String(item?.note || '')
-              }));
-            }
-
-            const distMap = frame.distractors || {};
-            for (const slot of Object.keys(distMap)) {
-              const spec = distMap[slot];
-              if (!spec) continue;
-              await reqAsPromise(distractors.put({
-                id: `${frameId}|${slot}`,
-                frameId,
-                slot,
-                strategy: spec.strategy || 'STATIC',
-                payload: spec.payload || {}
-              }));
-            }
-          }
-        }
-      });
-
-  return summary;
 }
 
-function asArray(value) {
-  return Array.isArray(value) ? value.slice() : [];
+function normaliseOption(value) {
+  const text = String(value || '').trim();
+  return text;
 }
 
-async function getFrame(frameId) {
-  if (!frameId) return null;
-  return withStores('readonly',
-                    [STORE_FRAMES, STORE_VERBS, STORE_MORPH, STORE_COLLS,
-                     STORE_CONTRASTS, STORE_DISTRACTORS],
-                    async (frames, verbs, morph, colls, contrasts, distractors) => {
-                      const frame = await reqAsPromise(frames.get(frameId));
-                      if (!frame) return null;
-                      const verb = await reqAsPromise(verbs.get(frame.verbId));
-                      const morphEntry = await reqAsPromise(morph.get(frame.verbId));
-
-                      async function collect(store, indexName) {
-                        const keys = await getIndexKeys(store, indexName, frameId);
-                        const values = [];
-                        for (const key of keys) {
-                          const val = await reqAsPromise(store.get(key));
-                          if (val) values.push(val);
-                        }
-                        return values;
-                      }
-
-                      const collocations = await collect(colls, 'frameId');
-                      const contrastItems = await collect(contrasts, 'frameId');
-                      const distractorItems = await collect(distractors, 'frameId');
-
-                      const distMap = {};
-                      distractorItems.forEach((item) => {
-                        distMap[item.slot] = {
-                          strategy: item.strategy,
-                          payload: item.payload
-                        };
-                      });
-
-                      return {
-                        frame,
-                        verb,
-                        morph: morphEntry || {},
-                        colls: collocations.map(c => c.text).filter(Boolean),
-                        contrasts: contrastItems.map(c => c.note).filter(Boolean),
-                        distractors: distMap
-                      };
-                    });
-}
-
-async function listFrameIds() {
-  return withStores('readonly', [STORE_FRAMES], async (frames) => {
-    if ('getAllKeys' in frames) return await reqAsPromise(frames.getAllKeys());
-    const out = [];
-    await new Promise((resolve, reject) => {
-      const req = frames.openKeyCursor();
-      req.onsuccess = (e) => {
-        const cur = e.target.result;
-        if (!cur) return resolve();
-        out.push(cur.primaryKey);
-        cur.continue();
-      };
-      req.onerror = () => reject(req.error);
-    });
-    return out;
-  });
-}
-
-async function ensureVStats(frameId) {
-  const now = Date.now();
-  const existing = await withStores('readonly', [STORE_VSTATS], async (vstats) => {
-    return await reqAsPromise(vstats.get(frameId));
-  });
-  if (existing) return existing;
-  const baseS = DEFAULTS.S0;
-  const due = now + baseS * Math.log2(1 / DEFAULTS.tau) * 86400000;
-  const fresh = {
-    id: frameId,
-    S: baseS,
-    last: now,
-    due,
-    q: DEFAULTS.q0,
-    streak: DEFAULTS.streak0
+function normaliseQuestion(raw, cardId, qIndex) {
+  if (!raw) return null;
+  const prompt = String(raw.prompt || raw.label || '').trim();
+  const answer = String(raw.answer || raw.correct || '').trim();
+  const options = Array.isArray(raw.options) ? raw.options : raw.choices;
+  const list = Array.isArray(options) ? options.map(normaliseOption).filter(Boolean) : [];
+  if (!prompt || !answer) return null;
+  if (!list.includes(answer)) list.unshift(answer);
+  const deduped = [];
+  for (const opt of list) {
+    if (!opt) continue;
+    if (!deduped.includes(opt)) deduped.push(opt);
+    if (deduped.length >= 5) break;
+  }
+  if (deduped.length < 2) return null;
+  return {
+    prompt,
+    answer,
+    options: deduped
   };
-  await withStores('readwrite', [STORE_VSTATS], async (vstats) => {
-    await vstats.put(fresh);
-  });
-  return fresh;
 }
 
-async function getVStats(frameId) {
-  if (!frameId) return null;
-  return withStores('readonly', [STORE_VSTATS], async (vstats) => {
-    return await reqAsPromise(vstats.get(frameId));
+function normaliseCard(raw, idx) {
+  if (!raw) return null;
+  const lemma = String(raw.lemma || raw.verb || '').trim();
+  const cue = String(raw.cue || raw.cueDe || lemma).trim();
+  const translation = String(raw.translation || raw.cueRu || '').trim();
+  const id = String(raw.id || lemma || `card-${idx}`).trim();
+  const questionsRaw = Array.isArray(raw.questions)
+      ? raw.questions
+      : Array.isArray(raw.slots) ? raw.slots : [];
+  const questions = [];
+  questionsRaw.forEach((q, qIndex) => {
+    const norm = normaliseQuestion(q, id, qIndex);
+    if (norm) questions.push(norm);
   });
-}
-
-async function putVStats(stats) {
-  if (!stats || !stats.id) return;
-  await withStores('readwrite', [STORE_VSTATS], async (vstats) => {
-    await vstats.put(stats);
-  });
-}
-
-async function listDue(limit = 10) {
-  const now = Date.now();
-  return withStores('readonly', [STORE_VSTATS], async (vstats) => {
-    const out = [];
-    const byDue = vstats.index('dueAt');
-    await new Promise((resolve, reject) => {
-      const req = byDue.openCursor();
-      req.onsuccess = (e) => {
-        const cur = e.target.result;
-        if (!cur) return resolve();
-        const value = cur.value;
-        out.push(value);
-        if (out.length >= limit) return resolve();
-        cur.continue();
-      };
-      req.onerror = () => reject(req.error);
-    });
-    const overdue = out.filter(s => (s.due || 0) <= now);
-    const upcoming = out.filter(s => (s.due || 0) > now);
-    overdue.sort((a, b) => (a.due || 0) - (b.due || 0));
-    upcoming.sort((a, b) => (a.due || 0) - (b.due || 0));
-    return overdue.concat(upcoming).slice(0, limit);
-  });
-}
-
-async function recordAttempt(entry) {
-  if (!entry || !entry.frameId) return;
-  const payload = {
-    id: entry.id || uid('vattempt'),
-    frameId: entry.frameId,
-    slot: entry.slot || 'LEMMA',
-    correct: !!entry.correct,
-    answer: entry.answer || '',
-    createdAt: entry.createdAt || Date.now()
+  if (!id || !cue || questions.length === 0) return null;
+  return {
+    id,
+    lemma,
+    cue,
+    translation,
+    questions
   };
-  await withStores('readwrite', [STORE_VATTEMPTS], async (vattempts) => {
-    await vattempts.put(payload);
-  });
-  return payload;
 }
 
-async function recentAttempts(frameId, slot, limit = 5) {
-  if (!frameId) return [];
-  return withStores('readonly', [STORE_VATTEMPTS], async (vattempts) => {
-    const index = vattempts.index('frameId');
-    const list = [];
-    await new Promise((resolve, reject) => {
-      const query = (typeof IDBKeyRange !== 'undefined' &&
-                     typeof IDBKeyRange.only === 'function')
-          ? IDBKeyRange.only(frameId)
-          : frameId;
-      const req = index.openCursor(query, 'prev');
-      req.onsuccess = (e) => {
-        const cur = e.target.result;
-        if (!cur) return resolve();
-        const value = cur.value;
-        if (!slot || value.slot === slot) list.push(value);
-        if (list.length >= limit) return resolve();
-        cur.continue();
-      };
-      req.onerror = () => reject(req.error);
-    });
-    return list;
-  });
+function listCards() {
+  const cards = loadJSON(STORAGE_KEY, []);
+  if (!Array.isArray(cards)) return [];
+  return cards.map(card => ({...card, questions: (card.questions || []).map(q => ({...q, options: (q.options || []).slice()}))}));
 }
 
-async function exportJSON() {
-  const ids = await listFrameIds();
-  const result = [];
-  for (const frameId of ids) {
-    const bundle = await getFrame(frameId);
-    if (!bundle || !bundle.verb) continue;
-    let verbEntry = result.find(v => v.lemma === bundle.verb.lemma);
-    if (!verbEntry) {
-      verbEntry = {
-        lemma: bundle.verb.lemma,
-        aux: bundle.verb.aux,
-        morph: {...bundle.morph},
-        frames: []
-      };
-      result.push(verbEntry);
-    }
-    const f = bundle.frame;
-    verbEntry.frames.push({
-      type: f.type,
-      cueRu: f.cueRu,
-      cueDe: f.cueDe,
-      caseCore: f.caseCore,
-      prepCase: f.prepCase,
-      probeMarker: f.probeMarker,
-      probeAnswer: f.probeAnswer,
-      examples: asArray(f.examples),
-      frequency: f.frequency,
-      colls: bundle.colls.slice(),
-      contrasts: bundle.contrasts.map(note => ({note})),
-      distractors: bundle.distractors
-    });
+function getCard(id) {
+  return listCards().find(card => card.id === id) || null;
+}
+
+function loadProgress() {
+  const raw = loadJSON(PROGRESS_KEY, {});
+  return raw && typeof raw === 'object' ? raw : {};
+}
+
+function getProgress(id) {
+  const store = loadProgress();
+  const entry = store[id] || {seen: 0, correct: 0};
+  return {...entry};
+}
+
+function recordResult(id, correct) {
+  if (!id) return;
+  const store = loadProgress();
+  const entry = store[id] || {seen: 0, correct: 0};
+  entry.seen += 1;
+  if (correct) entry.correct += 1;
+  store[id] = entry;
+  saveJSON(PROGRESS_KEY, store);
+}
+
+function clearAll() {
+  saveJSON(STORAGE_KEY, []);
+  saveJSON(PROGRESS_KEY, {});
+}
+
+function importJSON(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(text || ''));
+  } catch (e) {
+    throw new Error('Не удалось прочитать JSON: ' + (e && e.message ? e.message : e));
   }
-  return result;
+  if (!Array.isArray(parsed)) {
+    throw new Error('Ожидался массив карточек глаголов');
+  }
+  const cards = [];
+  parsed.forEach((raw, idx) => {
+    const card = normaliseCard(raw, idx);
+    if (card) cards.push(card);
+  });
+  if (!cards.length) {
+    throw new Error('Не найдено ни одной валидной карточки глаголов');
+  }
+  saveJSON(STORAGE_KEY, cards);
+  saveJSON(PROGRESS_KEY, {});
+  return {cards: cards.length};
+}
+
+function exportJSON() {
+  const cards = listCards();
+  return JSON.stringify(cards, null, 2);
 }
 
 window.verbdb = {
-  open,
   importJSON,
   exportJSON,
-  listFrameIds,
-  getFrame,
-  ensureVStats,
-  getVStats,
-  putVStats,
-  listDue,
-  recordAttempt,
-  recentAttempts,
-  defaults: DEFAULTS
-};
-})();
-
-/* ===== END JS ===== */
-
-/* ===== BEGIN JS: src/js/core/verbtrainer.inline.js ===== */
-(function() {
-'use strict';
-
-const SLOT_SEQUENCE = [
-  'LEMMA',
-  'CASE_ENDING',
-  'PRAET',
-  'PART2_AUX',
-  'COLLOCATION'
-];
-const FALLBACK_SLOT = 'LEMMA';
-
-const TAU = 0.9;
-const RHO = 0.2;
-const S_MIN = 0.25;
-const D_MAX = 60; // days
-const ETA_VERB = 0.36;
-const LAMBDA = 0.2;
-
-function ensureDeps() {
-  if (!window.verbdb) throw new Error('verbdb not initialised');
-  if (!window.verbrng) throw new Error('verbrng not available');
-}
-
-function availableSlots(bundle) {
-  const data = new Set();
-  if (!bundle) return data;
-  const morph = bundle.morph || {};
-  const frame = bundle.frame || {};
-  if (bundle.verb?.lemma) data.add('LEMMA');
-  if (frame.probeAnswer || frame.caseCore || frame.prepCase)
-    data.add('CASE_ENDING');
-  if (morph.praet3sg) data.add('PRAET');
-  if (morph.part2 || bundle.verb?.aux) data.add('PART2_AUX');
-  if ((bundle.colls || []).length) data.add('COLLOCATION');
-  if (frame.syntax) data.add('SYNTAX');
-  if (frame.audio) data.add('AUDIO');
-  if (frame.metadata?.slot5 === 'SYNTAX') data.add('SYNTAX');
-  if (frame.metadata?.slot5 === 'AUDIO') data.add('AUDIO');
-  if (frame.metadata?.slot5 === 'COLLOCATION') data.add('COLLOCATION');
-  return data;
-}
-
-function pickSlot(bundle, step) {
-  const avail = availableSlots(bundle);
-  const seq = SLOT_SEQUENCE.slice();
-  const picked = [];
-  for (const slot of seq) {
-    if (avail.has(slot)) picked.push(slot);
-  }
-  if (avail.has('SYNTAX') && !picked.includes('SYNTAX')) picked.push('SYNTAX');
-  if (avail.has('AUDIO') && !picked.includes('AUDIO')) picked.push('AUDIO');
-  if (picked.length === 0) picked.push(FALLBACK_SLOT);
-  const idx = picked.length ? (step % picked.length) : 0;
-  return picked[idx] || FALLBACK_SLOT;
-}
-
-function dedupe(arr, correct) {
-  const seen = new Set();
-  const out = [];
-  const canonical = (x) => String(x || '').trim();
-  const corr = canonical(correct);
-  for (const item of arr || []) {
-    const norm = canonical(item);
-    if (!norm) continue;
-    if (norm === corr) continue;
-    if (seen.has(norm)) continue;
-    seen.add(norm);
-    out.push(item);
-  }
-  return out;
-}
-
-function balanceAcrossFeatures(pool, count, rng) {
-  if (!Array.isArray(pool) || !pool.length) return [];
-  const list = pool.slice(0, 32);
-  const shuffled = window.verbrng.shuffleSeeded(list, rng);
-  return shuffled.slice(0, count);
-}
-
-function tagsForSlot(bundle, slot) {
-  const tags = [slot];
-  if (bundle?.frame?.type) tags.push(bundle.frame.type);
-  if (bundle?.verb?.lemma) tags.push(bundle.verb.lemma);
-  return tags;
-}
-
-function microHint(bundle, slot, correct) {
-  const frame = bundle?.frame || {};
-  const morph = bundle?.morph || {};
-  switch (slot) {
-    case 'CASE_ENDING':
-      return frame.caseCore || frame.prepCase || 'Падеж?';
-    case 'PRAET':
-      return `Präteritum → ${morph.stem ? morph.stem + '-' : ''}`;
-    case 'PART2_AUX':
-      return `${bundle?.verb?.aux || 'haben'} + Partizip II`;
-    case 'COLLOCATION':
-      return 'Подумайте о типичном словосочетании';
-    case 'SYNTAX':
-      return 'V2 / позиция сказуемого';
-    case 'AUDIO':
-      return 'Воспроизведите услышанное';
-    default:
-      return correct;
-  }
-}
-
-function correctForSlot(bundle, slot) {
-  const frame = bundle?.frame || {};
-  const morph = bundle?.morph || {};
-  const verb = bundle?.verb || {};
-  switch (slot) {
-    case 'LEMMA':
-      return verb.lemma || '';
-    case 'CASE_ENDING':
-      return frame.probeAnswer || frame.caseCore || frame.prepCase || verb.lemma || '';
-    case 'PRAET':
-      return morph.praet3sg || '';
-    case 'PART2_AUX': {
-      const aux = verb.aux || 'haben';
-      const part = morph.part2 || '';
-      return `${aux.toLowerCase()} ${part}`.trim();
-    }
-    case 'COLLOCATION':
-      return (bundle.colls && bundle.colls[0]) || frame.cueDe || verb.lemma || '';
-    case 'SYNTAX':
-      return frame.syntax || frame.cueDe || '';
-    case 'AUDIO':
-      return frame.audio || (frame.examples && frame.examples[0]) || verb.lemma || '';
-    default:
-      return verb.lemma || '';
-  }
-}
-
-async function fromUserMistakes(bundle, slot, rng) {
-  try {
-    const attempts = await window.verbdb.recentAttempts(bundle.frame.id, slot, 12);
-    const wrong = attempts.filter(a => !a.correct).map(a => a.answer).filter(Boolean);
-    return window.verbrng.shuffleSeeded(wrong, rng);
-  } catch (e) {
-    console.warn('[verbtrainer] fromUserMistakes', e);
-    return [];
-  }
-}
-
-function fromContrastNotes(bundle, slot) {
-  if (slot !== 'LEMMA' && slot !== 'CASE_ENDING' && slot !== 'COLLOCATION') return [];
-  return (bundle.contrasts || []).map((note) => {
-    if (!note) return '';
-    const parts = String(note).split(/≠|=/);
-    return parts.length ? parts[parts.length - 1].trim() : note;
-  }).filter(Boolean);
-}
-
-function fromTemplates(bundle, slot) {
-  const spec = bundle?.distractors?.[slot];
-  if (!spec) return [];
-  const out = [];
-  const payload = spec.payload || {};
-  switch (spec.strategy) {
-    case 'STATIC':
-      if (Array.isArray(payload.options)) out.push(...payload.options);
-      if (Array.isArray(payload.values)) out.push(...payload.values);
-      if (Array.isArray(payload.wrongPart2)) out.push(...payload.wrongPart2);
-      if (payload.wrongAux) out.push(payload.wrongAux);
-      break;
-    case 'PATTERN':
-      if (Array.isArray(payload.endings)) out.push(...payload.endings);
-      if (Array.isArray(payload.wrongCases)) out.push(...payload.wrongCases);
-      break;
-    case 'MORPH_NOISE':
-      if (Array.isArray(payload.wrongPart2)) out.push(...payload.wrongPart2);
-      if (Array.isArray(payload.morphNoise)) out.push(...payload.morphNoise);
-      if (payload.wrongAux) out.push(payload.wrongAux);
-      break;
-    case 'LEXICAL_NEIGHBOR':
-      if (Array.isArray(payload.neighbors)) out.push(...payload.neighbors);
-      break;
-    default:
-      if (Array.isArray(payload.options)) out.push(...payload.options);
-  }
-  return out;
-}
-
-function morphNoise(bundle, slot) {
-  const out = [];
-  const morph = bundle?.morph || {};
-  if (slot === 'PRAET' && morph.praet3sg) {
-    if (morph.praet3sg.endsWith('f')) out.push(morph.praet3sg + 'te');
-    if (morph.stem) out.push(morph.stem + 'te');
-  }
-  if (slot === 'PART2_AUX' && morph.part2) {
-    out.push(`sein ${morph.part2}`);
-    out.push(`haben ${morph.part2.replace(/^ge/, 'ge') + 'en'}`);
-  }
-  return out;
-}
-
-async function genSlot(bundle, slot, sessionSeed, attemptNum) {
-  const frame = bundle.frame;
-  const seed = window.verbrng.hashSeed(sessionSeed, frame.id, slot, String(attemptNum));
-  const rng = window.verbrng.mulberry32(seed);
-  const correct = correctForSlot(bundle, slot);
-  let pool = [];
-
-  try {
-    pool = pool.concat(await fromUserMistakes(bundle, slot, rng));
-  } catch (_) {
-  }
-  pool = pool.concat(fromTemplates(bundle, slot));
-  pool = pool.concat(fromContrastNotes(bundle, slot));
-  pool = pool.concat(morphNoise(bundle, slot));
-
-  pool = dedupe(pool, correct);
-  const distractors = balanceAcrossFeatures(pool, 3, rng);
-  const options = window.verbrng.shuffleSeeded([correct, ...distractors], rng);
-  const hint = microHint(bundle, slot, correct);
-  const features = tagsForSlot(bundle, slot);
-
-  return {options, correct, hint, features, slot};
-}
-
-async function recordAttempt(bundle, slot, res, gen) {
-  try {
-    await window.verbdb.recordAttempt({
-      frameId: bundle.frame.id,
-      slot,
-      correct: !!res.correct,
-      answer: res.choice
-    });
-  } catch (e) {
-    console.warn('[verbtrainer] recordAttempt', e);
-  }
-}
-
-async function updateSRS(frameId, score0to5) {
-  const stats = await window.verbdb.ensureVStats(frameId);
-  const now = Date.now();
-  const dtDays = Math.max(0, (now - (stats.last || now)) / 86400000);
-  const pHat = Math.pow(2, -dtDays / (stats.S || window.verbdb.defaults.S0));
-  const r = score0to5 >= 4 ? 1 : score0to5 >= 3 ? 0.5 : 0;
-  const g = r === 1 ? (1 - pHat) : -(pHat + LAMBDA);
-  const lnS = Math.log(Math.max(stats.S || window.verbdb.defaults.S0, 1e-3)) + ETA_VERB * g;
-  const maxS = D_MAX / Math.log2(1 / TAU);
-  let S = Math.exp(lnS);
-  if (!isFinite(S) || S <= 0) S = window.verbdb.defaults.S0;
-  S = Math.max(S_MIN, Math.min(S, maxS));
-  const q = (1 - RHO) * (stats.q || window.verbdb.defaults.q0) + RHO * (r ? 1 : 0);
-  const streak = r ? (stats.streak || 0) + 1 : 0;
-  const due = now + S * Math.log2(1 / TAU) * 86400000;
-  const next = {...stats, S, last: now, due, q, streak};
-  await window.verbdb.putVStats(next);
-  return next;
-}
-
-async function ensureStatsForAll() {
-  const ids = await window.verbdb.listFrameIds();
-  for (const id of ids) {
-    await window.verbdb.ensureVStats(id);
-  }
-}
-
-async function pickNextFrames(limit = 5) {
-  ensureDeps();
-  await ensureStatsForAll();
-  const dueStats = await window.verbdb.listDue(limit * 3);
-  const out = [];
-  const used = new Set();
-  for (const stat of dueStats) {
-    if (stat && stat.id && !used.has(stat.id)) {
-      const bundle = await window.verbdb.getFrame(stat.id);
-      if (bundle && bundle.frame && bundle.verb) {
-        out.push(bundle);
-        used.add(stat.id);
-        if (out.length >= limit) return out;
-      }
-    }
-  }
-  if (out.length < limit) {
-    const ids = await window.verbdb.listFrameIds();
-    for (const id of ids) {
-      if (used.has(id)) continue;
-      const bundle = await window.verbdb.getFrame(id);
-      if (bundle && bundle.frame && bundle.verb) {
-        out.push(bundle);
-        used.add(id);
-        if (out.length >= limit) break;
-      }
-    }
-  }
-  return out;
-}
-
-async function runCard(bundle, ui, sessionSeed) {
-  ensureDeps();
-  if (!bundle || !bundle.frame) throw new Error('frame bundle required');
-  const seed = sessionSeed || `${bundle.frame.id}:${Date.now()}`;
-  let score = 0;
-  for (let i = 0; i < 5; i++) {
-    const slot = pickSlot(bundle, i);
-    const gen = await genSlot(bundle, slot, seed, i);
-    const res = await ui.ask(gen, {slot, bundle, step: i});
-    await recordAttempt(bundle, slot, res, gen);
-    if (res.correct) {
-      score++;
-      continue;
-    }
-    if (gen.hint) await ui.hint(gen.hint, {slot, bundle});
-    const retry = await ui.ask(gen, {slot, bundle, step: i, retry: true});
-    await recordAttempt(bundle, slot, retry, gen);
-  }
-  const productionOk = await ui.microProduction(bundle);
-  await updateSRS(bundle.frame.id, score);
-  return {score, productionOk};
-}
-
-window.verbtrainer = {
-  pickSlot,
-  genSlot,
-  runCard,
-  pickNextFrames,
-  ensureStatsForAll,
-  updateSRS
+  listCards,
+  getCard,
+  getProgress,
+  recordResult,
+  clearAll
 };
 })();
 
@@ -6319,9 +5617,9 @@ window.screens.dbItemAdd = api;
 /* ===== END JS ===== */
 
 /* ===== BEGIN JS: src/js/screens/verbs.inline.js ===== */
-/* verbs.inline.js — экран тренажёра глаголов (beta)
-   Экспортирует window.screens.verbs = { mount(container, opts), update?, destroy() }
-   Зависимости: util, verbdb, verbtrainer, verbrng
+/* verbs.inline.js — простой экран для глагольных карточек.
+   Без сложного планировщика: карточки хранятся в localStorage через verbdb,
+   сессия проходит последовательно по всем карточкам.
 */
 (function() {
 'use strict';
@@ -6336,273 +5634,309 @@ const el = U.el || ((tag, cls, text) => {
 const clear = U.clear || ((node) => {
   while (node && node.firstChild) node.removeChild(node.firstChild);
 });
-const ensureStyles = () => {
-  if (!U.injectStyle) return;
-  U.injectStyle('verbs-screen-style', `
-    .verbs-screen{min-height:100%;}
-    .verbs-wrap{max-width:900px;margin:0 auto;padding:20px 16px 60px;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;}
-    .verbs-head{display:flex;flex-direction:column;gap:6px;margin-bottom:20px;}
-    .verbs-mode{font-size:13px;letter-spacing:.4px;text-transform:uppercase;color:rgba(10,20,40,.6);}
-    .verbs-cue{font-size:24px;font-weight:800;color:#0a1428;}
-    .verbs-cue-ru{font-size:18px;color:rgba(10,20,40,.75);}
-    .verbs-examples{font-size:15px;color:rgba(10,20,40,.7);margin-top:8px;line-height:1.4;}
-    .verbs-slot{margin-top:14px;font-weight:700;font-size:16px;letter-spacing:.3px;color:#0a1428;}
-    .verbs-options{display:flex;flex-direction:column;gap:10px;margin-top:12px;}
-    .verbs-options button{appearance:none;border:0;border-radius:12px;padding:14px 18px;font-weight:700;font-size:18px;letter-spacing:.2px;text-align:left;background:#f3f4f6;color:#0a1428;box-shadow:0 2px 0 rgba(10,20,40,.05) inset;cursor:pointer;transition:filter .15s ease,transform .02s ease;}
-    .verbs-options button.correct{background:#bbf7d0;color:#064e3b;}
-    .verbs-options button.wrong{background:#fecaca;color:#7f1d1d;}
-    .verbs-options button:disabled{cursor:default;opacity:.85;}
-    .verbs-hint{margin-top:12px;font-size:14px;color:rgba(10,20,40,.75);min-height:20px;}
-    .verbs-status{margin-top:18px;font-size:15px;color:rgba(10,20,40,.65);}
-    .verbs-controls{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px;}
-    .verbs-production{margin-top:18px;display:none;flex-direction:column;gap:10px;}
-    .verbs-production textarea{width:100%;min-height:90px;padding:12px;border-radius:12px;border:1px solid rgba(10,20,40,.2);font:16px/1.4 ui-sans-serif,system-ui;}
-    .verbs-production button{align-self:flex-start;}
-    .verbs-summary{margin-top:24px;padding:16px;border-radius:16px;background:#f9fafb;color:#0a1428;display:none;}
-    @media (prefers-color-scheme:dark){
-      .verbs-wrap{color:#e5e7eb;}
-      .verbs-cue{color:#f9fafb;}
-      .verbs-cue-ru{color:rgba(229,231,235,.8);}
-      .verbs-options button{background:#1f2937;color:#f9fafb;box-shadow:0 2px 0 rgba(0,0,0,.3) inset;}
-      .verbs-options button.correct{background:#14532d;color:#bbf7d0;}
-      .verbs-options button.wrong{background:#7f1d1d;color:#fee2e2;}
-      .verbs-summary{background:#1f2937;color:#e5e7eb;}
-    }
-  `);
-};
+const ensureBaseStyles = U.ensureBaseStyles || (() => {});
+const injectStyle = U.injectStyle || (() => {});
+const file = (U.file) || {};
+const makeToaster = U.makeToaster || ((parent) => {
+  return {el: el('div'), show: (msg) => alert(msg)};
+});
 
 function createUI(container) {
-  ensureStyles();
-  if (U.ensureBaseStyles) U.ensureBaseStyles();
-  const root = el('section', 'verbs-screen');
-  const wrap = el('div', 'verbs-wrap');
-  const controls = el('div', 'verbs-controls');
+  ensureBaseStyles();
+  injectStyle('verbs-simple-style', `
+    .verbs-simple{min-height:100%;}
+    .verbs-simple h2{margin:18px 0 6px;font-size:26px;font-weight:800;}
+    .verbs-simple .verbs-translation{font-size:18px;opacity:.75;}
+    .verbs-simple .verbs-progress{margin-top:12px;font-size:14px;opacity:.7;}
+    .verbs-simple .verbs-question{margin-top:24px;font-size:18px;font-weight:700;}
+    .verbs-simple .verbs-options{display:flex;flex-direction:column;gap:10px;margin-top:16px;}
+    .verbs-simple .verbs-options button{appearance:none;border:0;border-radius:12px;padding:14px 18px;font-weight:700;font-size:17px;letter-spacing:.2px;text-align:left;background:#f3f4f6;color:#0a1428;box-shadow:0 2px 0 rgba(10,20,40,.05) inset;cursor:pointer;transition:filter .15s ease,transform .02s ease;}
+    .verbs-simple .verbs-options button.correct{background:#bbf7d0;color:#064e3b;}
+    .verbs-simple .verbs-options button.wrong{background:#fecaca;color:#7f1d1d;}
+    .verbs-simple .verbs-feedback{min-height:22px;margin-top:14px;font-size:15px;}
+    .verbs-simple .verbs-summary{margin-top:24px;padding:16px;border-radius:16px;background:#f9fafb;font-size:15px;}
+    @media (prefers-color-scheme: dark){
+      .verbs-simple .verbs-options button{background:#1f2937;color:#f9fafb;box-shadow:0 2px 0 rgba(0,0,0,.25) inset;}
+      .verbs-simple .verbs-options button.correct{background:#14532d;color:#bbf7d0;}
+      .verbs-simple .verbs-options button.wrong{background:#7f1d1d;color:#fee2e2;}
+      .verbs-simple .verbs-summary{background:#1f2937;color:#e5e7eb;}
+    }
+  `);
+
+  const root = el('section', 'verbs-simple');
+  const wrap = el('div', 'ui-wrap');
+  const controls = el('div', 'ui-row');
   const bBack = el('button', 'btn ghost', '← Назад');
   const bImport = el('button', 'btn', 'Импорт JSON');
   const bExport = el('button', 'btn', 'Экспорт JSON');
   const bStart = el('button', 'btn primary', 'Старт сессии');
   controls.append(bBack, bImport, bExport, bStart);
 
-  const head = el('div', 'verbs-head');
-  const modeLabel = el('div', 'verbs-mode', 'Verben • beta');
-  const cueDe = el('div', 'verbs-cue', '—');
-  const cueRu = el('div', 'verbs-cue-ru', '');
-  head.append(modeLabel, cueDe, cueRu);
-
-  const examples = el('div', 'verbs-examples');
-  const slotLabel = el('div', 'verbs-slot', '');
+  const title = el('h2', null, 'Глаголы');
+  const translation = el('div', 'verbs-translation');
+  const progress = el('div', 'verbs-progress');
+  const question = el('div', 'verbs-question', 'Здесь появится задание.');
   const options = el('div', 'verbs-options');
-  const hint = el('div', 'verbs-hint');
-  const status = el('div', 'verbs-status');
+  const feedback = el('div', 'verbs-feedback');
+  const nextRow = el('div', 'ui-row');
+  const bNext = el('button', 'btn primary hidden', 'Дальше');
+  nextRow.append(bNext);
+  const summary = el('div', 'verbs-summary hidden');
+  const note = el('div', 'note', 'Импортируйте JSON с карточками глаголов и нажмите «Старт сессии».');
 
-  const production = el('div', 'verbs-production');
-  const prodTitle = el('div', null, 'Соберите короткое предложение (микропрактика):');
-  const prodArea = el('textarea');
-  const prodButtons = el('div', 'verbs-controls');
-  const prodOk = el('button', 'btn primary', 'Готово');
-  const prodSkip = el('button', 'btn ghost', 'Пропустить');
-  prodButtons.append(prodOk, prodSkip);
-  production.append(prodTitle, prodArea, prodButtons);
+  const toaster = makeToaster(wrap);
 
-  const summary = el('div', 'verbs-summary');
-
-  wrap.append(controls, head, examples, slotLabel, options, hint, status, production, summary);
+  wrap.append(controls, title, translation, progress, question, options, feedback, nextRow, summary, note, toaster.el);
   root.appendChild(wrap);
   container.appendChild(root);
 
-  let resolveAsk = null;
-  let currentOptions = [];
-
-  function resetOptions() {
-    clear(options);
-    currentOptions = [];
+  function hideNext() {
+    bNext.classList.add('hidden');
+    bNext.disabled = true;
   }
-
-  function renderOptions(gen) {
-    resetOptions();
-    const opts = Array.isArray(gen.options) && gen.options.length ? gen.options
-                                                                : [gen.correct];
-    currentOptions = opts.slice();
-    opts.forEach((label) => {
-      const btn = el('button', null, label || '—');
-      btn.disabled = false;
-      btn.addEventListener('click', () => {
-        if (!resolveAsk) return;
-        const correct = String(label).trim() === String(gen.correct).trim();
-        options.querySelectorAll('button').forEach((n) => n.disabled = true);
-        btn.classList.add(correct ? 'correct' : 'wrong');
-        resolveAsk({correct, choice: label});
-        resolveAsk = null;
-      });
-      options.appendChild(btn);
-    });
+  function showNext(label, handler) {
+    bNext.textContent = label || 'Дальше';
+    bNext.onclick = handler;
+    bNext.disabled = false;
+    bNext.classList.remove('hidden');
   }
 
   return {
     root,
-    buttons: {bBack, bImport, bExport, bStart},
-    head: {cueDe, cueRu, examples},
-    slotLabel,
-    hint,
-    status,
+    buttons: {bBack, bImport, bExport, bStart, bNext},
+    title,
+    translation,
+    progress,
+    question,
+    options,
+    feedback,
     summary,
-    production,
-    prodArea,
-    prodOk,
-    prodSkip,
-    setFrame(bundle, ctx) {
-      cueDe.textContent = bundle?.frame?.cueDe || bundle?.verb?.lemma || '—';
-      cueRu.textContent = bundle?.frame?.cueRu || '';
-      const ex = (bundle?.frame?.examples || []).slice(0, 2).join('\n');
-      examples.textContent = ex;
-      status.textContent = ctx ? `Карточка ${ctx.index + 1} из ${ctx.total}` : '';
-      summary.style.display = 'none';
-      hint.textContent = '';
-      production.style.display = 'none';
+    note,
+    toaster,
+    clearOptions() {
+      clear(options);
     },
-    ask(gen, ctx) {
-      slotLabel.textContent = `Шаг ${ctx.step + 1}: ${gen.slot}`;
-      hint.textContent = '';
-      summary.style.display = 'none';
-      return new Promise((resolve) => {
-        resolveAsk = resolve;
-        renderOptions(gen);
+    renderOptions(list, onPick) {
+      clear(options);
+      list.forEach((label) => {
+        const btn = el('button', null, label);
+        btn.addEventListener('click', () => onPick(label, btn));
+        options.appendChild(btn);
       });
     },
-    hint(text) {
-      hint.textContent = text || '';
-      return Promise.resolve();
+    setTitle(text) {
+      title.textContent = text || 'Глаголы';
     },
-    async microProduction(bundle) {
-      production.style.display = 'flex';
-      prodArea.value = '';
-      prodArea.focus();
-      return new Promise((resolve) => {
-        function done(ok) {
-          production.style.display = 'none';
-          resolve(ok);
-        }
-        const check = () => {
-          const val = String(prodArea.value || '').toLowerCase();
-          const lemma = (bundle?.verb?.lemma || '').toLowerCase();
-          const coll = (bundle?.colls?.[0] || '').toLowerCase();
-          const good = lemma && val.includes(lemma) && (!coll || val.includes(coll.split(' ')[0]));
-          done(good);
-        };
-        prodOk.onclick = () => check();
-        prodSkip.onclick = () => done(false);
-      });
+    setTranslation(text) {
+      translation.textContent = text || '';
+    },
+    setProgress(text) {
+      progress.textContent = text || '';
+    },
+    setQuestion(text) {
+      question.textContent = text || '';
+    },
+    setFeedback(text) {
+      feedback.textContent = text || '';
     },
     showSummary(text) {
       summary.textContent = text || '';
-      summary.style.display = text ? 'block' : 'none';
+      summary.classList.toggle('hidden', !text);
     },
+    showNote(text) {
+      note.textContent = text || '';
+      note.classList.toggle('hidden', !text);
+    },
+    hideNote() {
+      note.classList.add('hidden');
+    },
+    showNext,
+    hideNext,
     destroy() {
-      if (resolveAsk) {
-        try {
-          resolveAsk({correct: false, choice: null, cancelled: true});
-        } catch (_) {
-        }
-      }
-      resolveAsk = null;
       root.remove();
     }
   };
+}
+
+function formatAccuracy(entry) {
+  if (!entry) return '';
+  const seen = entry.seen || 0;
+  if (!seen) return '';
+  const pct = Math.round(((entry.correct || 0) / seen) * 100);
+  return `Точность: ${pct}% (${entry.correct}/${seen})`;
 }
 
 const screen = {
   mounted: false,
   ui: null,
   opts: {},
-  busy: false,
+  session: null,
   mount(container, opts = {}) {
     this.opts = opts;
-    this.mounted = true;
     this.ui = createUI(container);
-    this.attachHandlers();
+    this.mounted = true;
+    const {bBack, bImport, bExport, bStart} = this.ui.buttons;
+    bBack.addEventListener('click', () => {
+      opts.onBack && opts.onBack();
+    });
+    bImport.addEventListener('click', () => this.handleImport());
+    bExport.addEventListener('click', () => this.handleExport());
+    bStart.addEventListener('click', () => this.startSession());
+    this.refreshState();
     return this;
   },
-  attachHandlers() {
-    const ui = this.ui;
-    const {bBack, bImport, bExport, bStart} = ui.buttons;
-    bBack.addEventListener('click', () => {
-      if (this.busy) return;
-      this.opts.onBack?.();
-    });
-    bImport.addEventListener('click', () => this.doImport());
-    bExport.addEventListener('click', () => this.doExport());
-    bStart.addEventListener('click', () => this.startSession());
-  },
-  async doImport() {
-    if (!U.file?.pickTextFile) {
-      alert('Импорт недоступен: нет util.file');
+  refreshState() {
+    const cards = (window.verbdb && window.verbdb.listCards) ? window.verbdb.listCards() : [];
+    if (!cards.length) {
+      this.ui.setTitle('Глаголы');
+      this.ui.setTranslation('');
+      this.ui.setProgress('');
+      this.ui.setQuestion('Здесь появится задание.');
+      this.ui.clearOptions();
+      this.ui.setFeedback('');
+      this.ui.showSummary('');
+      this.ui.showNote('Импортируйте JSON с карточками глаголов и нажмите «Старт сессии».');
+      this.ui.hideNext();
       return;
     }
-    try {
-      const picked = await U.file.pickTextFile();
-      if (!picked) return;
-      await window.verbdb.importJSON(picked.text);
-      await window.verbtrainer.ensureStatsForAll();
-      alert('Импорт завершён успешно');
-    } catch (e) {
-      console.warn('[verbs] import error', e);
-      alert('Ошибка импорта: ' + (e?.message || e));
-    }
+    const first = cards[0];
+    const prog = window.verbdb.getProgress ? window.verbdb.getProgress(first.id) : null;
+    this.ui.setTitle(first.cue || first.lemma || 'Глаголы');
+    this.ui.setTranslation(first.translation || '');
+    this.ui.setProgress(formatAccuracy(prog));
+    this.ui.setQuestion('Нажмите «Старт сессии», чтобы потренироваться.');
+    this.ui.clearOptions();
+    this.ui.setFeedback('');
+    this.ui.showSummary('Всего карточек: ' + cards.length);
+    this.ui.hideNext();
+    this.ui.showNote('');
   },
-  async doExport() {
+  async handleImport() {
+    if (!file.pickTextFile) {
+      this.ui.toaster.show('Импорт недоступен в этом браузере', true);
+      return;
+    }
+    const picked = await file.pickTextFile();
+    if (!picked || !picked.text) return;
     try {
-      const data = await window.verbdb.exportJSON();
-      const text = JSON.stringify(data, null, 2);
-      if (U.file?.downloadText) {
-        U.file.downloadText(`lexi-verbs-${U.fmt?.dateStamp?.() || Date.now()}.json`, text);
+      const res = window.verbdb.importJSON(picked.text);
+      this.ui.toaster.show(`Импортировано карточек: ${res.cards}`);
+    } catch (e) {
+      this.ui.toaster.show(e.message || 'Не удалось импортировать JSON', true);
+    }
+    this.refreshState();
+  },
+  handleExport() {
+    if (!window.verbdb || !window.verbdb.exportJSON) {
+      this.ui.toaster.show('Экспорт недоступен', true);
+      return;
+    }
+    const text = window.verbdb.exportJSON();
+    if (file.downloadText) file.downloadText('lexi-verbs.json', text);
+    else this.ui.toaster.show('Скопируйте данные:\n' + text);
+  },
+  startSession() {
+    const cards = (window.verbdb && window.verbdb.listCards) ? window.verbdb.listCards() : [];
+    if (!cards.length) {
+      this.ui.toaster.show('Нет карточек. Импортируйте JSON.', true);
+      return;
+    }
+    this.session = {
+      cards,
+      cardIdx: 0,
+      questionIdx: 0,
+      totalCorrect: 0,
+      answered: 0,
+      cardCorrect: true
+    };
+    this.ui.hideNote();
+    this.showCurrentCard();
+  },
+  currentCard() {
+    if (!this.session) return null;
+    return this.session.cards[this.session.cardIdx] || null;
+  },
+  showCurrentCard() {
+    const card = this.currentCard();
+    if (!card) return this.finishSession();
+    this.session.questionIdx = 0;
+    this.session.cardCorrect = true;
+    this.ui.setTitle(card.cue || card.lemma || 'Карточка');
+    this.ui.setTranslation(card.translation || '');
+    const prog = window.verbdb.getProgress ? window.verbdb.getProgress(card.id) : null;
+    this.ui.setProgress(formatAccuracy(prog));
+    this.ui.showSummary(`Карточка ${this.session.cardIdx + 1} из ${this.session.cards.length}`);
+    this.showCurrentQuestion();
+  },
+  showCurrentQuestion() {
+    const card = this.currentCard();
+    if (!card) return;
+    const questions = card.questions || [];
+    const question = questions[this.session.questionIdx];
+    if (!question) return this.finishCard();
+    this.ui.setQuestion(question.prompt);
+    this.ui.setFeedback('');
+    this.ui.hideNext();
+    const options = question.options || [];
+    this.ui.renderOptions(options, (label, btn) => {
+      this.handleAnswer(question, label, btn);
+    });
+  },
+  handleAnswer(question, choice, btn) {
+    const card = this.currentCard();
+    if (!card) return;
+    const opts = Array.from(this.ui.options.querySelectorAll('button'));
+    opts.forEach(b => b.disabled = true);
+    if (choice === question.answer) {
+      btn.classList.add('correct');
+      this.session.totalCorrect += 1;
+      this.ui.setFeedback('Верно!');
+    } else {
+      btn.classList.add('wrong');
+      this.session.cardCorrect = false;
+      this.ui.setFeedback(`Нужно: ${question.answer}`);
+      opts.forEach((b) => {
+        if (b.textContent === question.answer) b.classList.add('correct');
+      });
+    }
+    this.session.answered += 1;
+    const isLastStep = this.session.questionIdx >= (card.questions.length - 1);
+    this.ui.showNext(isLastStep ? 'Следующая карточка' : 'Следующий шаг', () => {
+      this.ui.hideNext();
+      if (isLastStep) {
+        this.finishCard();
       } else {
-        alert(text);
+        this.session.questionIdx += 1;
+        this.showCurrentQuestion();
       }
-    } catch (e) {
-      console.warn('[verbs] export error', e);
-      alert('Ошибка экспорта: ' + (e?.message || e));
-    }
+    });
   },
-  async startSession() {
-    if (this.busy) return;
-    this.busy = true;
-    const ui = this.ui;
-    const {bStart, bImport, bExport, bBack} = ui.buttons;
-    [bStart, bImport, bExport, bBack].forEach(btn => btn.disabled = true);
-    try {
-      const frames = await window.verbtrainer.pickNextFrames(5);
-      if (!frames.length) {
-        ui.showSummary('Нет доступных карточек: импортируйте глаголы.');
-        return;
-      }
-      const seed = Date.now().toString(36);
-      const results = [];
-      for (let i = 0; i < frames.length; i++) {
-        const bundle = frames[i];
-        ui.setFrame(bundle, {index: i, total: frames.length});
-        const res = await window.verbtrainer.runCard(bundle, ui, seed);
-        results.push({...res, frameId: bundle.frame.id});
-      }
-      const ok = results.reduce((acc, r) => acc + (r.score || 0), 0);
-      const summary = `Пройдено карточек: ${frames.length}. Средний результат: ${(ok / (frames.length * 5) * 100).toFixed(0)}%.`;
-      ui.showSummary(summary);
-    } catch (e) {
-      console.warn('[verbs] session error', e);
-      alert('Сессия прервана: ' + (e?.message || e));
-    } finally {
-      this.busy = false;
-      const {bStart, bImport, bExport, bBack} = ui.buttons;
-      [bStart, bImport, bExport, bBack].forEach(btn => btn.disabled = false);
+  finishCard() {
+    const card = this.currentCard();
+    if (card && window.verbdb && window.verbdb.recordResult) {
+      window.verbdb.recordResult(card.id, this.session.cardCorrect);
     }
+    this.session.cardIdx += 1;
+    this.session.questionIdx = 0;
+    this.showCurrentCard();
+  },
+  finishSession() {
+    const total = this.session ? this.session.cards.length : 0;
+    const done = this.session ? this.session.cardIdx : 0;
+    this.ui.setQuestion('Сессия завершена.');
+    this.ui.clearOptions();
+    this.ui.setFeedback('');
+    this.ui.showSummary(`Ответов: ${this.session?.answered || 0}. Карточек пройдено: ${done} из ${total}.`);
+    this.ui.showNext('Вернуться к списку', () => {
+      this.ui.hideNext();
+      this.session = null;
+      this.refreshState();
+    });
   },
   destroy() {
-    try {
-      this.ui?.destroy?.();
-    } catch (e) {
-    }
+    this.session = null;
+    if (this.ui) this.ui.destroy();
     this.mounted = false;
-    this.ui = null;
-    this.busy = false;
   }
 };
 

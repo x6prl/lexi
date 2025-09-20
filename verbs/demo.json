@@ -1,87 +1,47 @@
 [
   {
+    "id": "helfen-dat",
     "lemma": "helfen",
-    "aux": "HABEN",
-    "morph": {
-      "praet3sg": "half",
-      "part2": "geholfen",
-      "pres3sg": "hilft",
-      "stem": "helf"
-    },
-    "frames": [
+    "cue": "jemandem helfen",
+    "translation": "помогать кому-то",
+    "questions": [
       {
-        "type": "DAT_VERB",
-        "cueRu": "помочь кому-то",
-        "cueDe": "jemandem helfen",
-        "caseCore": "Dativ",
-        "probeMarker": "jemand? helfen",
-        "probeAnswer": "jemandem",
-        "examples": [
-          "Kannst du mir helfen?",
-          "Er hilft dem Kind."
-        ],
-        "frequency": 90,
-        "colls": ["jemandem helfen", "dem Kind helfen"],
-        "contrasts": [
-          {"note": "helfen (Dat) ≠ unterstützen (Akk)"}
-        ],
-        "distractors": {
-          "CASE_ENDING": {
-            "strategy": "PATTERN",
-            "payload": {"endings": ["jemanden", "jemand"]}
-          },
-          "PRAET": {
-            "strategy": "MORPH_NOISE",
-            "payload": {"wrongPart2": ["helfte"], "morphNoise": ["helfte"]}
-          },
-          "PART2_AUX": {
-            "strategy": "STATIC",
-            "payload": {"wrongAux": "sein", "wrongPart2": ["gehelft"]}
-          }
-        }
+        "prompt": "Какой падеж требуется после helfen?",
+        "options": ["Dat", "Akk", "Nom"],
+        "answer": "Dat"
+      },
+      {
+        "prompt": "Präteritum (er/sie/es)",
+        "options": ["half", "hilfte", "holf"],
+        "answer": "half"
+      },
+      {
+        "prompt": "Partizip II",
+        "options": ["geholfen", "geholfte", "gehilft"],
+        "answer": "geholfen"
       }
     ]
   },
   {
+    "id": "warten-auf",
     "lemma": "warten",
-    "aux": "HABEN",
-    "morph": {
-      "praet3sg": "wartete",
-      "part2": "gewartet",
-      "pres3sg": "wartet",
-      "stem": "wart"
-    },
-    "frames": [
+    "cue": "auf etwas warten",
+    "translation": "ждать чего-то",
+    "questions": [
       {
-        "type": "PREP_AKK",
-        "cueRu": "ждать чего-то/кого-то",
-        "cueDe": "auf etwas warten",
-        "prepCase": "auf + Akk",
-        "probeMarker": "Wir warten ___ Bus.",
-        "probeAnswer": "auf den",
-        "examples": [
-          "Ich warte auf die Antwort.",
-          "Wir warten auf den Zug."
-        ],
-        "frequency": 85,
-        "colls": ["auf den Zug warten", "auf die Antwort warten"],
-        "contrasts": [
-          {"note": "warten auf (Akk) ≠ erwarten (Akk, без предлога)"}
-        ],
-        "distractors": {
-          "CASE_ENDING": {
-            "strategy": "PATTERN",
-            "payload": {"endings": ["auf dem", "auf der"]}
-          },
-          "LEMMA": {
-            "strategy": "LEXICAL_NEIGHBOR",
-            "payload": {"neighbors": ["erwarten"]}
-          },
-          "PART2_AUX": {
-            "strategy": "MORPH_NOISE",
-            "payload": {"wrongPart2": ["gewartenen"], "wrongAux": "sein"}
-          }
-        }
+        "prompt": "Какой предлог нужен для warten?",
+        "options": ["auf", "an", "für"],
+        "answer": "auf"
+      },
+      {
+        "prompt": "Полная связка с артиклем: Wir warten ___ Bus.",
+        "options": ["auf den", "auf dem", "an den"],
+        "answer": "auf den"
+      },
+      {
+        "prompt": "Perfekt (er/sie)",
+        "options": ["hat gewartet", "ist gewartet", "hat ge warten"],
+        "answer": "hat gewartet"
       }
     ]
   }
