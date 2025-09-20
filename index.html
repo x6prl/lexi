@@ -3599,15 +3599,9 @@ const state = {
   mounted: false,
   container: null,
   root: null,
-  // данные упражнения
-  term: null,   // {id, art, de, pl, ru[]}
-  mode: 'MC5',  // 'MC5'|'CHUNKS'|'COMPOSE'
-  kind: 'noun', // 'noun'|'verb'
-  card: null,
+  context: null,
   steps: [],    // [{type, options, correct, widget:'keypad'|'list', idx?}]
   stepIndex: 0,
-  picks: {article: null, word: null, plural: null, chunks: [], letters: []},
-  verbAnswers: {},
   errors: 0,
   // DOM
   els: null,
@@ -3790,6 +3784,254 @@ function createVerbSteps(card) {
     });
   });
   return steps;
+}
+
+const nounModePlanners = {
+  MC5: planForMC5,
+  CHUNKS: planForChunks,
+  COMPOSE: planForCompose
+};
+
+function clonePicks(picks) {
+  return JSON.parse(JSON.stringify(picks));
+}
+
+async function createNounExerciseContext(term, mode) {
+  const actualMode = nounModePlanners[mode] ? mode : 'MC5';
+  const picks = {article: null, word: null, plural: null, chunks: [], letters: []};
+  const ruTitle = (Array.isArray(term?.ru) && term.ru[0]) ? term.ru[0] : term?.de;
+  const summaryConfig = [
+    {id: 'article', label: 'Артикль:'},
+    {id: 'word', label: 'Слово:'},
+    {id: 'plural', label: 'Мн. ч.:'}
+  ];
+  const planner = nounModePlanners[actualMode] || planForMC5;
+  const steps = await planner(term);
+
+  const context = {
+    kind: 'noun',
+    term,
+    mode: actualMode,
+    steps,
+    title: ruTitle,
+    summaryConfig
+  };
+
+  context.updateSummary = function(summaryItems) {
+    if (!summaryItems) return;
+    const chArt = summaryItems.article;
+    const chWord = summaryItems.word;
+    const chPl = summaryItems.plural;
+    if (chArt) chArt.set(picks.article || '—');
+    if (chWord) {
+      if (context.mode === 'MC5') {
+        chWord.set(picks.word || '—');
+      } else if (context.mode === 'CHUNKS') {
+        const parts = picks.chunks.slice();
+        const remaining =
+            window.lexiparts.splitChunks(term.de).length - parts.length;
+        const masked =
+            parts.join('') + (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
+        chWord.set(masked || '•');
+      } else {
+        const letters = picks.letters.slice();
+        const remaining =
+            window.lexiparts.splitCompose(term.de).length - letters.length;
+        const masked =
+            letters.join('') + (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
+        chWord.set(masked || '•');
+      }
+    }
+    if (chPl) chPl.set(picks.plural || '—');
+  };
+
+  context.valueFor = function(step) {
+    if (!step) return null;
+    if (step.type === 'article') return picks.article;
+    if (step.type === 'word') return picks.word;
+    if (step.type === 'plural') return picks.plural;
+    if (step.type === 'chunk') return picks.chunks[step.idx];
+    if (step.type === 'letter') return picks.letters[step.idx];
+    return null;
+  };
+
+  context.onPick = function(step, value) {
+    const picked = String(value);
+    if (step.type === 'article') {
+      picks.article = picked;
+    } else if (step.type === 'word') {
+      picks.word = picked;
+    } else if (step.type === 'plural') {
+      picks.plural = picked;
+    } else if (step.type === 'chunk') {
+      picks.chunks[step.idx] = picked;
+    } else if (step.type === 'letter') {
+      picks.letters[step.idx] = picked;
+    }
+    return {ok: (picked === String(step.correct))};
+  };
+
+  context.onBack = function(step) {
+    if (!step) return;
+    if (step.type === 'article') picks.article = null;
+    else if (step.type === 'word') picks.word = null;
+    else if (step.type === 'plural') picks.plural = null;
+    else if (step.type === 'chunk')
+      picks.chunks = picks.chunks.slice(0, step.idx);
+    else if (step.type === 'letter')
+      picks.letters = picks.letters.slice(0, step.idx);
+  };
+
+  context.errorsBefore = function(limit) {
+    let errs = 0;
+    for (let i = 0; i < limit; i++) {
+      const st = steps[i];
+      if (!st) continue;
+      if (String(context.valueFor(st)) !== String(st.correct)) errs++;
+    }
+    return errs;
+  };
+
+  context.finish = async function({errors, onDone}) {
+    const correct = {article: term.art, word: term.de, plural: term.pl};
+    if (context.mode === 'CHUNKS') {
+      correct.chunks = window.lexiparts.splitChunks(term.de);
+    } else if (context.mode === 'COMPOSE') {
+      correct.letters = window.lexiparts.splitCompose(term.de);
+    }
+
+    const success = (errors === 0);
+    log('done:', {
+      id: term.id,
+      mode: context.mode,
+      success,
+      errors,
+      picks
+    });
+
+    try {
+      await window.cardengine.onReview(term.id, context.mode, success, Date.now());
+    } catch (e) {
+      console.error('[exercise] onReview failed', e);
+    }
+
+    if (typeof onDone === 'function') {
+      onDone({
+        term,
+        mode: context.mode,
+        success,
+        errors,
+        picks: clonePicks(picks),
+        correct
+      });
+    }
+
+    return {errors, success};
+  };
+
+  return context;
+}
+
+function createVerbExerciseContext(card) {
+  const steps = createVerbSteps(card);
+  const answers = {};
+  const summaryConfig = [
+    {id: 'lemma', label: 'Инфинитив:', initial: card?.lemma || card?.cue || card?.id || '—'}
+  ];
+  steps.forEach((step) => {
+    if (step.summaryKey) summaryConfig.push({id: step.summaryKey, label: step.summaryLabel});
+  });
+
+  const context = {
+    kind: 'verb',
+    card,
+    steps,
+    title: card?.translation || card?.cue || card?.lemma || 'Глагол',
+    summaryConfig
+  };
+
+  context.updateSummary = function(summaryItems) {
+    if (!summaryItems) return;
+    const lemmaItem = summaryItems.lemma;
+    if (lemmaItem) {
+      const lemma = card?.lemma || card?.cue || card?.id;
+      lemmaItem.set(lemma || '—');
+    }
+    steps.forEach((step) => {
+      if (!step.summaryKey) return;
+      const item = summaryItems[step.summaryKey];
+      if (!item) return;
+      const picked = answers[step.summaryKey]?.picked;
+      item.set(picked || '•');
+    });
+  };
+
+  context.valueFor = function(step) {
+    if (!step || !step.summaryKey) return null;
+    return answers[step.summaryKey]?.picked || null;
+  };
+
+  context.onPick = function(step, value) {
+    const picked = String(value);
+    const correct = String(step.correct);
+    if (step.summaryKey)
+      answers[step.summaryKey] = {picked, correct};
+    return {ok: (picked === correct)};
+  };
+
+  context.onBack = function(step) {
+    if (step?.summaryKey) delete answers[step.summaryKey];
+  };
+
+  context.errorsBefore = function(limit) {
+    let errs = 0;
+    for (let i = 0; i < limit; i++) {
+      const st = steps[i];
+      if (!st || !st.summaryKey) continue;
+      const picked = answers[st.summaryKey]?.picked;
+      if (String(picked) !== String(st.correct)) errs++;
+    }
+    return errs;
+  };
+
+  context.finish = async function({onDone}) {
+    let errors = 0;
+    const answersMap = {};
+    const correctMap = {};
+    steps.forEach((step) => {
+      if (!step.summaryKey) return;
+      const picked = answers[step.summaryKey]?.picked || null;
+      answersMap[step.summaryKey] = picked;
+      correctMap[step.summaryKey] = step.correct;
+      if (String(picked) !== String(step.correct)) errors++;
+    });
+    const success = errors === 0;
+    log('done verb:', {
+      id: card?.id,
+      success,
+      errors,
+      answers: answersMap
+    });
+    try {
+      if (card?.id && window.verbdb?.recordResult)
+        window.verbdb.recordResult(card.id, success);
+    } catch (e) {
+      console.warn('[exercise] verb recordResult failed', e);
+    }
+    if (typeof onDone === 'function') {
+      onDone({
+        kind: 'verb',
+        card,
+        success,
+        errors,
+        answers: answersMap,
+        correct: correctMap
+      });
+    }
+    return {errors, success};
+  };
+
+  return context;
 }
 
 // ---------- планировщики шагов ----------
@@ -3994,51 +4236,8 @@ function formatLayoutShift(v) {
 
 // ---------- прогресс/заголовки ----------
 function updateSummaryView() {
-  if (!state.summaryItems) return;
-  if (state.kind === 'verb') {
-    const lemmaItem = state.summaryItems.lemma;
-    if (lemmaItem) {
-      const lemma = state.card?.lemma || state.card?.cue || state.card?.id;
-      lemmaItem.set(lemma || '—');
-    }
-    state.steps.forEach((step) => {
-      if (!step.summaryKey) return;
-      const item = state.summaryItems[step.summaryKey];
-      if (!item) return;
-      const picked = state.verbAnswers[step.summaryKey]?.picked;
-      item.set(picked || '•');
-    });
-    state.layout?.schedule('chips');
-    return;
-  }
-
-  const chArt = state.summaryItems.article;
-  const chWord = state.summaryItems.word;
-  const chPl = state.summaryItems.plural;
-  if (chArt) chArt.set(state.picks.article || '—');
-
-  if (chWord) {
-    if (state.mode === 'MC5') {
-      chWord.set(state.picks.word || '—');
-    } else if (state.mode === 'CHUNKS') {
-      const parts = state.picks.chunks.slice();
-      const remaining =
-          window.lexiparts.splitChunks(state.term.de).length - parts.length;
-      const masked = parts.join('') +
-          (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
-      chWord.set(masked || '•');
-    } else {
-      const letters = state.picks.letters.slice();
-      const remaining =
-          window.lexiparts.splitCompose(state.term.de).length - letters.length;
-      const masked = letters.join('') +
-          (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
-      chWord.set(masked || '•');
-    }
-  }
-
-  if (chPl) chPl.set(state.picks.plural || '—');
-
+  if (!state.summaryItems || !state.context) return;
+  state.context.updateSummary(state.summaryItems);
   state.layout?.schedule('chips');
 }
 function getThemeVars(scope) {
@@ -4106,25 +4305,10 @@ function mountStep() {
 
 // ---------- обработчик выбора варианта ----------
 function handlePick(step, value) {
-  const correct = String(step.correct);
-  const picked = String(value);
-  const ok = (picked === correct);
-
-  // сохраняем выбор в state.picks
-  if (step.type === 'article') {
-    state.picks.article = picked;
-  } else if (step.type === 'word') {
-    state.picks.word = picked;
-  } else if (step.type === 'plural') {
-    state.picks.plural = picked;
-  } else if (step.type === 'chunk') {
-    state.picks.chunks[step.idx] = picked;  // фиксируем позицию
-  } else if (step.type === 'letter') {
-    state.picks.letters[step.idx] = picked;
-  } else if (step.kind === 'verb') {
-    state.verbAnswers[step.summaryKey] = {picked, correct};
-  }
-
+  if (!state.context) return;
+  const result = state.context.onPick(step, value) || {};
+  const ok = (typeof result.ok === 'boolean') ? result.ok :
+              (String(value) === String(step.correct));
   if (!ok) state.errors++;
 
   updateSummaryView();
@@ -4134,7 +4318,7 @@ function handlePick(step, value) {
     state.stepIndex++;
     mountStep();
   } else {
-    finishExercise();
+    finishCurrentExercise();
   }
 }
 
@@ -4165,129 +4349,36 @@ function onBackClick() {
     exitToHome();
     return;
   }
-  // обычный шаг назад
-  const step = state.steps[state.stepIndex - 1];
-  recomputeErrorsUpTo(state.stepIndex - 1);
+  if (!state.context) return;
+  const prevIdx = state.stepIndex - 1;
+  const step = state.steps[prevIdx];
+  recomputeErrorsUpTo(prevIdx);
 
-  if (step.type === 'article')
-    state.picks.article = null;
-  else if (step.type === 'word')
-    state.picks.word = null;
-  else if (step.type === 'plural')
-    state.picks.plural = null;
-  else if (step.type === 'chunk')
-    state.picks.chunks = state.picks.chunks.slice(0, step.idx);
-  else if (step.type === 'letter')
-    state.picks.letters = state.picks.letters.slice(0, step.idx);
-  else if (step.kind === 'verb' && step.summaryKey)
-    delete state.verbAnswers[step.summaryKey];
+  state.context.onBack(step);
 
-  state.stepIndex--;
+  state.stepIndex = prevIdx;
   updateSummaryView();
   mountStep();
 }
 
 function recomputeErrorsUpTo(lastIdx) {
-  let errs = 0;
-  for (let i = 0; i < lastIdx; i++) {
-    const st = state.steps[i];
-    const v = (() => {
-      if (st.kind === 'verb')
-        return state.verbAnswers[st.summaryKey]?.picked;
-      if (st.type === 'article') return state.picks.article;
-      if (st.type === 'word') return state.picks.word;
-      if (st.type === 'plural') return state.picks.plural;
-      if (st.type === 'chunk') return state.picks.chunks[st.idx];
-      if (st.type === 'letter') return state.picks.letters[st.idx];
-      return null;
-    })();
-    if (String(v) !== String(st.correct)) errs++;
+  if (!state.context) {
+    state.errors = 0;
+    return;
   }
-  state.errors = errs;
+  const limit = Math.max(0, lastIdx);
+  state.errors = state.context.errorsBefore(limit);
 }
 
 // ---------- завершение упражнения ----------
-async function finishExercise() {
-  if (state.kind === 'verb') {
-    await finishVerbExercise();
-    return;
-  }
-  const correct = {
-    article: state.term.art,
-    word: state.term.de,
-    plural: state.term.pl,
-  };
-  if (state.mode === 'CHUNKS') {
-    correct.chunks = window.lexiparts.splitChunks(state.term.de);
-  } else if (state.mode === 'COMPOSE') {
-    correct.letters = window.lexiparts.splitCompose(state.term.de);
-  }
-
-  const success = (state.errors === 0);
-  log('done:', {
-    id: state.term.id,
-    mode: state.mode,
-    success,
+async function finishCurrentExercise() {
+  if (!state.context) return;
+  const result = await state.context.finish({
     errors: state.errors,
-    picks: state.picks
+    onDone: state.onDone
   });
-
-  // обновляем память через cardengine (экран — единственная точка onReview)
-  try {
-    await window.cardengine.onReview(
-        state.term.id, state.mode, success, Date.now());
-  } catch (e) {
-    console.error('[exercise] onReview failed', e);
-  }
-
-  // сообщаем наружу
-  if (typeof state.onDone === 'function') {
-    state.onDone({
-      term: state.term,
-      mode: state.mode,
-      success,
-      errors: state.errors,
-      picks: JSON.parse(JSON.stringify(state.picks)),
-      correct
-    });
-  }
-}
-
-async function finishVerbExercise() {
-  const card = state.card || {};
-  let errors = 0;
-  const answers = {};
-  const correctMap = {};
-  state.steps.forEach((step) => {
-    if (!step.summaryKey) return;
-    const picked = state.verbAnswers[step.summaryKey]?.picked || null;
-    answers[step.summaryKey] = picked;
-    correctMap[step.summaryKey] = step.correct;
-    if (String(picked) !== String(step.correct)) errors++;
-  });
-  state.errors = errors;
-  const success = errors === 0;
-  log('done verb:', {
-    id: card.id,
-    success,
-    errors,
-    answers
-  });
-  try {
-    if (card.id && window.verbdb?.recordResult)
-      window.verbdb.recordResult(card.id, success);
-  } catch (e) {
-    console.warn('[exercise] verb recordResult failed', e);
-  }
-  if (typeof state.onDone === 'function') {
-    state.onDone({
-      kind: 'verb',
-      card,
-      success,
-      errors,
-      answers,
-      correct: correctMap
-    });
+  if (result && typeof result.errors === 'number') {
+    state.errors = result.errors;
   }
 }
 
@@ -4311,41 +4402,26 @@ async function loadPayload(opts) {
   if (!state.container) state.container = target;
 
   if (opts && opts.kind === 'verb' && opts.card) {
-    state.kind = 'verb';
-    state.card = opts.card;
-    state.term = null;
-    state.mode = 'VERB';
-    state.picks = {article: null, word: null, plural: null, chunks: [], letters: []};
-    state.verbAnswers = {};
+    const context = createVerbExerciseContext(opts.card);
+    state.context = context;
+    state.steps = context.steps || [];
     state.errors = 0;
-    const steps = createVerbSteps(opts.card);
-    state.steps = steps;
-    const summaryConfig = [
-      {id: 'lemma', label: 'Инфинитив:', initial: opts.card.lemma || opts.card.cue || opts.card.id || '—'}
-    ];
-    steps.forEach((step) => {
-      summaryConfig.push({id: step.summaryKey, label: step.summaryLabel});
-    });
-    const title = opts.card.translation || opts.card.cue || opts.card.lemma || 'Глагол';
-    buildUI(state.container, title, progress, summaryConfig);
+    state.stepIndex = 0;
+
+    buildUI(state.container, context.title, progress, context.summaryConfig);
     attachBackHandler();
-    if (!steps.length) {
+    if (!state.steps.length) {
       if (typeof state.onDone === 'function') {
         state.onDone({kind: 'verb', card: opts.card, success: true, errors: 0, answers: {}, correct: {}});
       }
       return;
     }
-    state.stepIndex = 0;
     updateSummaryView();
     mountStep();
     return;
   }
 
   // noun flow
-  state.kind = 'noun';
-  state.card = null;
-  state.verbAnswers = {};
-
   let termId = opts && opts.termId;
   let mode = opts && opts.mode;
   if (!termId) {
@@ -4356,29 +4432,14 @@ async function loadPayload(opts) {
   const term = await window.lexidb.getTerm(termId);
   if (!term) throw new Error('excercise: term not found by id=' + termId);
 
-  state.term = term;
-  state.mode = mode || 'MC5';
-  state.picks =
-      {article: null, word: null, plural: null, chunks: [], letters: []};
+  const context = await createNounExerciseContext(term, mode || 'MC5');
+  state.context = context;
+  state.steps = context.steps || [];
   state.errors = 0;
-
-  const ruTitle = (Array.isArray(term.ru) && term.ru[0]) ? term.ru[0] : term.de;
-  const summaryConfig = [
-    {id: 'article', label: 'Артикль:'},
-    {id: 'word', label: 'Слово:'},
-    {id: 'plural', label: 'Мн. ч.:'}
-  ];
-  buildUI(state.container, ruTitle, progress, summaryConfig);
-  attachBackHandler();
-
-  if (state.mode === 'MC5')
-    state.steps = await planForMC5(term);
-  else if (state.mode === 'CHUNKS')
-    state.steps = await planForChunks(term);
-  else
-    state.steps = await planForCompose(term);
-
   state.stepIndex = 0;
+
+  buildUI(state.container, context.title, progress, context.summaryConfig);
+  attachBackHandler();
   updateSummaryView();
   mountStep();
 }
@@ -4404,10 +4465,11 @@ const api = {
       await window.lexidb.open?.();
       state.layout?.load();
       await loadPayload(opts);
+      const ctx = state.context;
       log('mounted', {
-        kind: state.kind,
-        id: state.kind === 'verb' ? state.card?.id : state.term?.id,
-        mode: state.mode
+        kind: ctx?.kind,
+        id: ctx?.kind === 'verb' ? ctx.card?.id : ctx?.term?.id,
+        mode: ctx?.kind === 'noun' ? ctx.mode : 'VERB'
       });
     } catch (e) {
       console.error('[exercise] mount error:', e);
@@ -4436,10 +4498,10 @@ const api = {
     state.widget = null;
     state.summary = null;
     state.summaryItems = null;
-    state.card = null;
-    state.kind = 'noun';
-    state.verbAnswers = {};
+    state.context = null;
     state.steps = [];
+    state.stepIndex = 0;
+    state.errors = 0;
     log('destroyed');
   }
 };
