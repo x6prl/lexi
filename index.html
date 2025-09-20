@@ -5676,6 +5676,10 @@ function nextExercise() {
     ex.mount(mountRoot, {
       progress: {index: session.index + 1, total: session.size},  // опционально
       onDone: (payload) => {
+        if (payload && payload.aborted) {
+          session.running = false;
+          return;
+        }
         session.results.push(payload);
         session.index += 1;
         nextExercise();
