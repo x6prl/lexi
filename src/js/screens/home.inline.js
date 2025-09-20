@@ -183,6 +183,7 @@ const state = {
 async function render() {
   // 1) статы
   const {hasData, stats} = await computeDbStats();
+  if (!state.mounted || !state.els) return;
   state.hasData = hasData;
 
   if (!state.statsWidget) {

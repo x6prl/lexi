@@ -516,7 +516,6 @@ function onBackClick() {
       state.onDone && state.onDone({aborted: true});
     } catch (_) {
     }
-    // безопасно размонтируем экран и отправим домой
     try {
       window.app?.goHome?.();
     } catch (_) {
@@ -526,6 +525,7 @@ function onBackClick() {
   // обычный шаг назад
   const step = state.steps[state.stepIndex - 1];
   recomputeErrorsUpTo(state.stepIndex - 1);
+
   if (step.type === 'article')
     state.picks.article = null;
   else if (step.type === 'word')
@@ -633,6 +633,12 @@ async function loadPayload(opts) {
   state.steps = [];
 
   const ruTitle = (Array.isArray(term.ru) && term.ru[0]) ? term.ru[0] : term.de;
+  const target = state.container ||
+      document.getElementById('root') ||
+      document.getElementById('app') ||
+      document.body;
+  if (!target) return;
+  if (!state.container) state.container = target;
   buildUI(state.container, ruTitle, progress);
   attachBackHandler();
 
@@ -677,7 +683,11 @@ const api = {
       console.error('[exercise] mount error:', e);
       const fallback =
           el('div', null, 'Ошибка загрузки упражнения. Проверьте базу.');
-      container.appendChild(fallback);
+      const host = container ||
+          document.getElementById('root') ||
+          document.getElementById('app') ||
+          document.body;
+      if (host) host.appendChild(fallback);
     }
   },
   destroy() {
