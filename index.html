@@ -740,6 +740,216 @@ else if (typeof globalThis !== 'undefined')
 
 /* ===== END JS ===== */
 
+/* ===== BEGIN JS: src/js/core/verbdb.inline.js ===== */
+(function() {
+'use strict';
+
+const STORAGE_KEY = 'lexi.verbs.cards.v1';
+const PROGRESS_KEY = 'lexi.verbs.progress.v1';
+
+function loadJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.warn('[verbdb] failed to parse', key, e);
+    return fallback;
+  }
+}
+
+function saveJSON(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn('[verbdb] failed to store', key, e);
+  }
+}
+
+function normaliseOption(value) {
+  const text = String(value || '').trim();
+  return text;
+}
+
+function normaliseQuestion(raw, cardId, qIndex) {
+  if (!raw) return null;
+  const prompt = String(raw.prompt || raw.label || '').trim();
+  const answer = String(raw.answer || raw.correct || '').trim();
+  const options = Array.isArray(raw.options) ? raw.options : raw.choices;
+  const list = Array.isArray(options) ? options.map(normaliseOption).filter(Boolean) : [];
+  if (!prompt || !answer) return null;
+  if (!list.includes(answer)) list.unshift(answer);
+  const deduped = [];
+  for (const opt of list) {
+    if (!opt) continue;
+    if (!deduped.includes(opt)) deduped.push(opt);
+    if (deduped.length >= 5) break;
+  }
+  if (deduped.length < 2) return null;
+  const summary = String(raw.summary || raw.short || prompt).trim();
+  const id = raw.id || raw.key || `${cardId || 'card'}-${qIndex}`;
+  return {
+    id: String(id),
+    prompt,
+    answer,
+    options: deduped,
+    summary: summary || prompt
+  };
+}
+
+function questionsFromFrame(raw, frame) {
+  const out = [];
+  if (!frame || typeof frame !== 'object') return out;
+  const marker = String(frame.probeMarker || '').trim();
+  const answerCase = String(frame.probeAnswer || '').trim();
+  if (marker && answerCase) {
+    let opts = [];
+    const payload = frame.distractors && frame.distractors.CASE_ENDING &&
+        frame.distractors.CASE_ENDING.payload;
+    if (payload) {
+      if (Array.isArray(payload.endings)) opts = opts.concat(payload.endings);
+      if (Array.isArray(payload.wrongCases))
+        opts = opts.concat(payload.wrongCases);
+    }
+    out.push({prompt: marker, answer: answerCase, options: opts, summary: 'Падеж'});
+  }
+  const praet = raw && raw.morph && raw.morph.praet3sg;
+  if (praet) {
+    let opts = [];
+    const payload = frame.distractors && frame.distractors.PRAET &&
+        frame.distractors.PRAET.payload;
+    if (payload && Array.isArray(payload.wrongPraet))
+      opts = opts.concat(payload.wrongPraet);
+    out.push({
+      prompt: 'Präteritum (er/sie/es)',
+      answer: String(praet),
+      options: opts,
+      summary: 'Präteritum'
+    });
+  }
+  const part2 = raw && raw.morph && raw.morph.part2;
+  if (part2) {
+    let opts = [];
+    const payload = frame.distractors && frame.distractors.PART2_AUX &&
+        frame.distractors.PART2_AUX.payload;
+    if (payload && Array.isArray(payload.wrongPart2))
+      opts = opts.concat(payload.wrongPart2);
+    out.push({
+      prompt: 'Partizip II',
+      answer: String(part2),
+      options: opts,
+      summary: 'Partizip II'
+    });
+  }
+  return out;
+}
+
+function normaliseCard(raw, idx) {
+  if (!raw) return null;
+  const lemma = String(raw.lemma || raw.verb || '').trim();
+  const cue = String(raw.cue || raw.cueDe || lemma).trim();
+  const translation = String(raw.translation || raw.cueRu || '').trim();
+  const id = String(raw.id || lemma || `card-${idx}`).trim();
+  let questionsRaw = Array.isArray(raw.questions)
+      ? raw.questions.slice()
+      : Array.isArray(raw.slots) ? raw.slots.slice() : [];
+  if ((!questionsRaw || questionsRaw.length === 0) && Array.isArray(raw.frames)) {
+    raw.frames.forEach((frame) => {
+      questionsRaw = questionsRaw.concat(questionsFromFrame(raw, frame));
+    });
+  }
+  const questions = [];
+  questionsRaw.forEach((q, qIndex) => {
+    const norm = normaliseQuestion(q, id, qIndex);
+    if (norm) questions.push(norm);
+  });
+  if (!id || !cue || questions.length === 0) return null;
+  return {
+    id,
+    lemma,
+    cue,
+    translation,
+    questions
+  };
+}
+
+function listCards() {
+  const cards = loadJSON(STORAGE_KEY, []);
+  if (!Array.isArray(cards)) return [];
+  return cards.map(card => ({...card, questions: (card.questions || []).map(q => ({...q, options: (q.options || []).slice()}))}));
+}
+
+function getCard(id) {
+  return listCards().find(card => card.id === id) || null;
+}
+
+function loadProgress() {
+  const raw = loadJSON(PROGRESS_KEY, {});
+  return raw && typeof raw === 'object' ? raw : {};
+}
+
+function getProgress(id) {
+  const store = loadProgress();
+  const entry = store[id] || {seen: 0, correct: 0};
+  return {...entry};
+}
+
+function recordResult(id, correct) {
+  if (!id) return;
+  const store = loadProgress();
+  const entry = store[id] || {seen: 0, correct: 0};
+  entry.seen += 1;
+  if (correct) entry.correct += 1;
+  store[id] = entry;
+  saveJSON(PROGRESS_KEY, store);
+}
+
+function clearAll() {
+  saveJSON(STORAGE_KEY, []);
+  saveJSON(PROGRESS_KEY, {});
+}
+
+function importJSON(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(text || ''));
+  } catch (e) {
+    throw new Error('Не удалось прочитать JSON: ' + (e && e.message ? e.message : e));
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error('Ожидался массив карточек глаголов');
+  }
+  const cards = [];
+  parsed.forEach((raw, idx) => {
+    const card = normaliseCard(raw, idx);
+    if (card) cards.push(card);
+  });
+  if (!cards.length) {
+    throw new Error('Не найдено ни одной валидной карточки глаголов');
+  }
+  saveJSON(STORAGE_KEY, cards);
+  saveJSON(PROGRESS_KEY, {});
+  return {cards: cards.length};
+}
+
+function exportJSON() {
+  const cards = listCards();
+  return JSON.stringify(cards, null, 2);
+}
+
+window.verbdb = {
+  importJSON,
+  exportJSON,
+  listCards,
+  getCard,
+  getProgress,
+  recordResult,
+  clearAll
+};
+})();
+
+/* ===== END JS ===== */
+
 /* ===== BEGIN JS: src/js/core/lexiparts.inline.js ===== */
 /* lexiparts.inline.js — генерация чанков/букв и опций клавиатуры для режимов
    CHUNKS/COMPOSE Использует (по желанию) window.lexidb для построения
@@ -3150,9 +3360,10 @@ function build(container) {
   const bImport600 = el('button', 'btn', 'Импортировать 600 самых популярных');
   const bImportAll = el('button', 'btn', 'Импортировать всё (1200+)');
   const bAdd = el('button', 'btn', 'Добавить слово');
+  const bVerbs = el('button', 'btn', 'Глаголы');
   const bExport = el('button', 'btn', 'Экспорт');
   const bDb = el('button', 'btn', 'База слов');
-  actions.append(bImport, bAdd, bExport, bDb);
+  actions.append(bImport, bAdd, bVerbs, bExport, bDb);
 
   // round size row
   const roundRow = el('div', 'round');
@@ -3185,6 +3396,7 @@ function build(container) {
     bImport600,
     bImportAll,
     bAdd,
+    bVerbs,
     bExport,
     bDb,
     roundRow,
@@ -3260,6 +3472,10 @@ const api = {
     state.els.bAdd.addEventListener('click', () => {
       log('click Add');
       state.opts.onAdd && state.opts.onAdd();
+    });
+    state.els.bVerbs.addEventListener('click', () => {
+      log('click Verbs');
+      state.opts.onVerbs && state.opts.onVerbs();
     });
     state.els.bExport.addEventListener('click', () => {
       log('click Export');
@@ -3386,12 +3602,17 @@ const state = {
   // данные упражнения
   term: null,   // {id, art, de, pl, ru[]}
   mode: 'MC5',  // 'MC5'|'CHUNKS'|'COMPOSE'
+  kind: 'noun', // 'noun'|'verb'
+  card: null,
   steps: [],    // [{type, options, correct, widget:'keypad'|'list', idx?}]
   stepIndex: 0,
   picks: {article: null, word: null, plural: null, chunks: [], letters: []},
+  verbAnswers: {},
   errors: 0,
   // DOM
   els: null,
+  summary: null,
+  summaryItems: null,
   widget: null,  // текущий инстанс Keypad/WordChoice
   onDone: null,
   layout: null
@@ -3512,19 +3733,80 @@ function normalizeKeypadItems(stepType, correct, options, fallbackFactory) {
   return rndShuffle(items.slice(0, 6));
 }
 
+function normalizeVerbChoice(correct, options) {
+  const seen = new Set();
+  const out = [];
+  const add = (val) => {
+    const s = String(val || '').trim();
+    if (!s) return;
+    if (!seen.has(s)) {
+      seen.add(s);
+      out.push(s);
+    }
+  };
+  add(correct);
+  (Array.isArray(options) ? options : []).forEach(add);
+  if (out.length < 2) add(correct ? '—' : 'нет');
+  return out;
+}
+
+function prepareVerbOptions(correct, options) {
+  const base = normalizeVerbChoice(correct, options);
+  const maxLen = base.reduce((m, x) => Math.max(m, x.length), 0);
+  if (maxLen <= 3) {
+    const padded = base.slice(0, 6);
+    while (padded.length < 3) padded.push('—');
+    return {widget: 'keypad', options: rndShuffle(padded)};
+  }
+  const padded = base.slice(0, 5);
+  while (padded.length < 5) padded.push('—');
+  return {widget: 'list', options: rndShuffle(padded)};
+}
+
+function summarizePrompt(prompt) {
+  const text = String(prompt || '').trim();
+  if (!text) return '—';
+  if (text.length <= 18) return text;
+  return text.slice(0, 15).trim() + '…';
+}
+
+function createVerbSteps(card) {
+  const steps = [];
+  if (!card) return steps;
+  const questions = Array.isArray(card.questions) ? card.questions : [];
+  questions.forEach((q, idx) => {
+    if (!q || !q.prompt || !q.answer) return;
+    const prep = prepareVerbOptions(q.answer, q.options || []);
+    const summaryKey = String(q.id || q.key || `verb-${idx}`);
+    steps.push({
+      type: 'verb-step',
+      kind: 'verb',
+      prompt: String(q.prompt),
+      correct: String(q.answer),
+      options: prep.options,
+      widget: prep.widget,
+      summaryKey,
+      summaryLabel: summarizePrompt(q.summary || q.prompt)
+    });
+  });
+  return steps;
+}
+
 // ---------- планировщики шагов ----------
 async function planForMC5(term) {
   const articleStep = {
     type: 'article',
+    prompt: 'Выберите артикль',
     correct: term.art,
     options: normalizeKeypadItems('article', term.art, ['der', 'die', 'das']),
     widget: 'keypad'
   };
   const words = await wordChoices(term.art, term.de, 5);
   const wordStep =
-      {type: 'word', correct: term.de, options: words, widget: 'list'};
+      {type: 'word', prompt: 'Выберите слово', correct: term.de, options: words, widget: 'list'};
   const pluralStep = {
     type: 'plural',
+    prompt: 'Множественное число',
     correct: term.pl,
     options: normalizeKeypadItems(
         'plural', term.pl, pluralOptions(term.pl, 6),
@@ -3538,6 +3820,7 @@ async function planForChunks(term) {
   const steps = [];
   steps.push({
     type: 'article',
+    prompt: 'Выберите артикль',
     correct: term.art,
     options: normalizeKeypadItems('article', term.art, ['der', 'die', 'das']),
     widget: 'keypad'
@@ -3553,6 +3836,7 @@ async function planForChunks(term) {
     steps.push({
       type: 'chunk',
       idx: i,
+      prompt: 'Соберите слово',
       correct: corr,
       options: opts,
       widget: 'keypad'
@@ -3560,6 +3844,7 @@ async function planForChunks(term) {
   }
   steps.push({
     type: 'plural',
+    prompt: 'Множественное число',
     correct: term.pl,
     options: normalizeKeypadItems(
         'plural', term.pl, pluralOptions(term.pl, 6),
@@ -3573,6 +3858,7 @@ async function planForCompose(term) {
   const steps = [];
   steps.push({
     type: 'article',
+    prompt: 'Выберите артикль',
     correct: term.art,
     options: normalizeKeypadItems('article', term.art, ['der', 'die', 'das']),
     widget: 'keypad'
@@ -3586,6 +3872,7 @@ async function planForCompose(term) {
     steps.push({
       type: 'letter',
       idx: i,
+      prompt: 'Соберите слово',
       correct: corr,
       options: opts,
       widget: 'keypad'
@@ -3593,6 +3880,7 @@ async function planForCompose(term) {
   }
   steps.push({
     type: 'plural',
+    prompt: 'Множественное число',
     correct: term.pl,
     options: normalizeKeypadItems(
         'plural', term.pl, pluralOptions(term.pl, 6),
@@ -3603,7 +3891,7 @@ async function planForCompose(term) {
 }
 
 // ---------- построение UI ----------
-function buildUI(container, ruTitle, progress) {
+function buildUI(container, title, progress, summaryConfig) {
   if (state.layout) state.layout.destroy();
   clear(container);
 
@@ -3621,15 +3909,18 @@ function buildUI(container, ruTitle, progress) {
   topbar.append(prog, layoutBtn);
   wrap.appendChild(topbar);
 
-  const h1 = el('h1', null, (ruTitle || '').toUpperCase());
+  const h1 = el('h1', null, (title || '').toUpperCase());
   wrap.appendChild(h1);
 
-  const summary = window.exerciseUI.createSummary([
-    {id: 'article', label: 'Артикль:'},
-    {id: 'word', label: 'Слово:'},
-    {id: 'plural', label: 'Мн. ч.:'}
-  ]);
+  const summary = window.exerciseUI.createSummary(summaryConfig || []);
   wrap.appendChild(summary.root);
+
+  const prompt = el('div', 'ex-prompt', '');
+  prompt.style.marginTop = '14px';
+  prompt.style.fontSize = '18px';
+  prompt.style.fontWeight = '600';
+  prompt.style.letterSpacing = '0.02em';
+  wrap.appendChild(prompt);
 
   const mount = el('div', 'mount');
   wrap.appendChild(mount);
@@ -3656,6 +3947,7 @@ function buildUI(container, ruTitle, progress) {
     wrap,
     prog,
     h1,
+    prompt,
     topbar,
     layoutBtn,
     layoutModal: layouts.root,
@@ -3664,13 +3956,12 @@ function buildUI(container, ruTitle, progress) {
     layoutReset: layouts.reset,
     layoutClose: layouts.close,
     layoutBackdrop: layouts.backdrop,
-    chips: summary.root,
-    chArt: summary.items.article,
-    chWord: summary.items.word,
-    chPl: summary.items.plural,
+    summaryRoot: summary.root,
     mount,
     btnBack
   };
+  state.summary = summary;
+  state.summaryItems = summary.items;
   root.tabIndex = 0;
   setTimeout(() => root.focus(), 0);
 
@@ -3680,6 +3971,7 @@ function buildUI(container, ruTitle, progress) {
       topbar,
       heading: h1,
       summary: summary.root,
+      prompt,
       mount,
       backBtn: btnBack,
       layoutModal: layouts.root,
@@ -3701,32 +3993,51 @@ function formatLayoutShift(v) {
 }
 
 // ---------- прогресс/заголовки ----------
-function updateChipsForMode() {
-  const {chArt, chWord, chPl} = state.els;
-  // Артикль
-  chArt.set(state.picks.article || '—');
-
-  // Слово: отображение зависит от режима/шага
-  if (state.mode === 'MC5') {
-    chWord.set(state.picks.word || '—');
-  } else if (state.mode === 'CHUNKS') {
-    const parts = state.picks.chunks.slice();
-    const remaining =
-        window.lexiparts.splitChunks(state.term.de).length - parts.length;
-    const masked = parts.join('') +
-        (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
-    chWord.set(masked || '•');
-  } else {  // COMPOSE
-    const letters = state.picks.letters.slice();
-    const remaining =
-        window.lexiparts.splitCompose(state.term.de).length - letters.length;
-    const masked = letters.join('') +
-        (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
-    chWord.set(masked || '•');
+function updateSummaryView() {
+  if (!state.summaryItems) return;
+  if (state.kind === 'verb') {
+    const lemmaItem = state.summaryItems.lemma;
+    if (lemmaItem) {
+      const lemma = state.card?.lemma || state.card?.cue || state.card?.id;
+      lemmaItem.set(lemma || '—');
+    }
+    state.steps.forEach((step) => {
+      if (!step.summaryKey) return;
+      const item = state.summaryItems[step.summaryKey];
+      if (!item) return;
+      const picked = state.verbAnswers[step.summaryKey]?.picked;
+      item.set(picked || '•');
+    });
+    state.layout?.schedule('chips');
+    return;
   }
 
-  // Плюрал
-  chPl.set(state.picks.plural || '—');
+  const chArt = state.summaryItems.article;
+  const chWord = state.summaryItems.word;
+  const chPl = state.summaryItems.plural;
+  if (chArt) chArt.set(state.picks.article || '—');
+
+  if (chWord) {
+    if (state.mode === 'MC5') {
+      chWord.set(state.picks.word || '—');
+    } else if (state.mode === 'CHUNKS') {
+      const parts = state.picks.chunks.slice();
+      const remaining =
+          window.lexiparts.splitChunks(state.term.de).length - parts.length;
+      const masked = parts.join('') +
+          (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
+      chWord.set(masked || '•');
+    } else {
+      const letters = state.picks.letters.slice();
+      const remaining =
+          window.lexiparts.splitCompose(state.term.de).length - letters.length;
+      const masked = letters.join('') +
+          (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
+      chWord.set(masked || '•');
+    }
+  }
+
+  if (chPl) chPl.set(state.picks.plural || '—');
 
   state.layout?.schedule('chips');
 }
@@ -3746,6 +4057,8 @@ function mountStep() {
     return;
   }
   const M = state.els.mount;
+  if (state.els.prompt)
+    state.els.prompt.textContent = s.prompt || '';
   // очистка предыдущего виджета
   if (state.widget && state.widget.destroy) try {
       state.widget.destroy();
@@ -3808,11 +4121,13 @@ function handlePick(step, value) {
     state.picks.chunks[step.idx] = picked;  // фиксируем позицию
   } else if (step.type === 'letter') {
     state.picks.letters[step.idx] = picked;
+  } else if (step.kind === 'verb') {
+    state.verbAnswers[step.summaryKey] = {picked, correct};
   }
 
   if (!ok) state.errors++;
 
-  updateChipsForMode();
+  updateSummaryView();
 
   // следующий шаг или завершение
   if (state.stepIndex < state.steps.length - 1) {
@@ -3864,9 +4179,11 @@ function onBackClick() {
     state.picks.chunks = state.picks.chunks.slice(0, step.idx);
   else if (step.type === 'letter')
     state.picks.letters = state.picks.letters.slice(0, step.idx);
+  else if (step.kind === 'verb' && step.summaryKey)
+    delete state.verbAnswers[step.summaryKey];
 
   state.stepIndex--;
-  updateChipsForMode();
+  updateSummaryView();
   mountStep();
 }
 
@@ -3875,6 +4192,8 @@ function recomputeErrorsUpTo(lastIdx) {
   for (let i = 0; i < lastIdx; i++) {
     const st = state.steps[i];
     const v = (() => {
+      if (st.kind === 'verb')
+        return state.verbAnswers[st.summaryKey]?.picked;
       if (st.type === 'article') return state.picks.article;
       if (st.type === 'word') return state.picks.word;
       if (st.type === 'plural') return state.picks.plural;
@@ -3889,6 +4208,10 @@ function recomputeErrorsUpTo(lastIdx) {
 
 // ---------- завершение упражнения ----------
 async function finishExercise() {
+  if (state.kind === 'verb') {
+    await finishVerbExercise();
+    return;
+  }
   const correct = {
     article: state.term.art,
     word: state.term.de,
@@ -3930,6 +4253,44 @@ async function finishExercise() {
   }
 }
 
+async function finishVerbExercise() {
+  const card = state.card || {};
+  let errors = 0;
+  const answers = {};
+  const correctMap = {};
+  state.steps.forEach((step) => {
+    if (!step.summaryKey) return;
+    const picked = state.verbAnswers[step.summaryKey]?.picked || null;
+    answers[step.summaryKey] = picked;
+    correctMap[step.summaryKey] = step.correct;
+    if (String(picked) !== String(step.correct)) errors++;
+  });
+  state.errors = errors;
+  const success = errors === 0;
+  log('done verb:', {
+    id: card.id,
+    success,
+    errors,
+    answers
+  });
+  try {
+    if (card.id && window.verbdb?.recordResult)
+      window.verbdb.recordResult(card.id, success);
+  } catch (e) {
+    console.warn('[exercise] verb recordResult failed', e);
+  }
+  if (typeof state.onDone === 'function') {
+    state.onDone({
+      kind: 'verb',
+      card,
+      success,
+      errors,
+      answers,
+      correct: correctMap
+    });
+  }
+}
+
 // ---------- загрузка следующей карточки (или указанной) ----------
 async function loadPayload(opts) {
   const progress = opts &&
@@ -3942,7 +4303,49 @@ async function loadPayload(opts) {
   if (seed != null && window.lexiparts && window.lexiparts.setSeed)
     window.lexiparts.setSeed(seed);
 
-  // получаем задачу
+  const target = state.container ||
+      document.getElementById('root') ||
+      document.getElementById('app') ||
+      document.body;
+  if (!target) return;
+  if (!state.container) state.container = target;
+
+  if (opts && opts.kind === 'verb' && opts.card) {
+    state.kind = 'verb';
+    state.card = opts.card;
+    state.term = null;
+    state.mode = 'VERB';
+    state.picks = {article: null, word: null, plural: null, chunks: [], letters: []};
+    state.verbAnswers = {};
+    state.errors = 0;
+    const steps = createVerbSteps(opts.card);
+    state.steps = steps;
+    const summaryConfig = [
+      {id: 'lemma', label: 'Инфинитив:', initial: opts.card.lemma || opts.card.cue || opts.card.id || '—'}
+    ];
+    steps.forEach((step) => {
+      summaryConfig.push({id: step.summaryKey, label: step.summaryLabel});
+    });
+    const title = opts.card.translation || opts.card.cue || opts.card.lemma || 'Глагол';
+    buildUI(state.container, title, progress, summaryConfig);
+    attachBackHandler();
+    if (!steps.length) {
+      if (typeof state.onDone === 'function') {
+        state.onDone({kind: 'verb', card: opts.card, success: true, errors: 0, answers: {}, correct: {}});
+      }
+      return;
+    }
+    state.stepIndex = 0;
+    updateSummaryView();
+    mountStep();
+    return;
+  }
+
+  // noun flow
+  state.kind = 'noun';
+  state.card = null;
+  state.verbAnswers = {};
+
   let termId = opts && opts.termId;
   let mode = opts && opts.mode;
   if (!termId) {
@@ -3958,22 +4361,16 @@ async function loadPayload(opts) {
   state.picks =
       {article: null, word: null, plural: null, chunks: [], letters: []};
   state.errors = 0;
-  state.steps = [];
 
   const ruTitle = (Array.isArray(term.ru) && term.ru[0]) ? term.ru[0] : term.de;
-  const target = state.container ||
-      document.getElementById('root') ||
-      document.getElementById('app') ||
-      document.body;
-  if (!target) return;
-  if (!state.container) state.container = target;
-  buildUI(state.container, ruTitle, progress);
+  const summaryConfig = [
+    {id: 'article', label: 'Артикль:'},
+    {id: 'word', label: 'Слово:'},
+    {id: 'plural', label: 'Мн. ч.:'}
+  ];
+  buildUI(state.container, ruTitle, progress, summaryConfig);
   attachBackHandler();
 
-  // Предварительная маска словечка в CHUNKS/COMPOSE
-  updateChipsForMode();
-
-  // план (с нормализацией опций внутри планировщиков)
   if (state.mode === 'MC5')
     state.steps = await planForMC5(term);
   else if (state.mode === 'CHUNKS')
@@ -3982,6 +4379,7 @@ async function loadPayload(opts) {
     state.steps = await planForCompose(term);
 
   state.stepIndex = 0;
+  updateSummaryView();
   mountStep();
 }
 
@@ -4006,7 +4404,11 @@ const api = {
       await window.lexidb.open?.();
       state.layout?.load();
       await loadPayload(opts);
-      log('mounted', {id: state.term && state.term.id, mode: state.mode});
+      log('mounted', {
+        kind: state.kind,
+        id: state.kind === 'verb' ? state.card?.id : state.term?.id,
+        mode: state.mode
+      });
     } catch (e) {
       console.error('[exercise] mount error:', e);
       const fallback =
@@ -4032,6 +4434,12 @@ const api = {
     state.root = null;
     state.els = null;
     state.widget = null;
+    state.summary = null;
+    state.summaryItems = null;
+    state.card = null;
+    state.kind = 'noun';
+    state.verbAnswers = {};
+    state.steps = [];
     log('destroyed');
   }
 };
@@ -5460,6 +5868,336 @@ window.screens.dbItemAdd = api;
 
 /* ===== END JS ===== */
 
+/* ===== BEGIN JS: src/js/screens/verbs.inline.js ===== */
+/* verbs.inline.js — простой экран для глагольных карточек.
+   Без сложного планировщика: карточки хранятся в localStorage через verbdb,
+   сессия проходит последовательно по всем карточкам.
+*/
+(function() {
+'use strict';
+
+const U = window.util || {};
+const el = U.el || ((tag, cls, text) => {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text != null) node.textContent = text;
+  return node;
+});
+const clear = U.clear || ((node) => {
+  while (node && node.firstChild) node.removeChild(node.firstChild);
+});
+const ensureBaseStyles = U.ensureBaseStyles || (() => {});
+const injectStyle = U.injectStyle || (() => {});
+const file = (U.file) || {};
+const makeToaster = U.makeToaster || ((parent) => {
+  return {el: el('div'), show: (msg) => alert(msg)};
+});
+
+function createUI(container) {
+  ensureBaseStyles();
+  injectStyle('verbs-simple-style', `
+    .verbs-simple{min-height:100%;}
+    .verbs-simple h2{margin:18px 0 6px;font-size:26px;font-weight:800;}
+    .verbs-simple .verbs-translation{font-size:18px;opacity:.75;}
+    .verbs-simple .verbs-progress{margin-top:12px;font-size:14px;opacity:.7;}
+    .verbs-simple .verbs-question{margin-top:24px;font-size:18px;font-weight:700;}
+    .verbs-simple .verbs-options{display:flex;flex-direction:column;gap:10px;margin-top:16px;}
+    .verbs-simple .verbs-options button{appearance:none;border:0;border-radius:12px;padding:14px 18px;font-weight:700;font-size:17px;letter-spacing:.2px;text-align:left;background:#f3f4f6;color:#0a1428;box-shadow:0 2px 0 rgba(10,20,40,.05) inset;cursor:pointer;transition:filter .15s ease,transform .02s ease;}
+    .verbs-simple .verbs-options button.correct{background:#bbf7d0;color:#064e3b;}
+    .verbs-simple .verbs-options button.wrong{background:#fecaca;color:#7f1d1d;}
+    .verbs-simple .verbs-feedback{min-height:22px;margin-top:14px;font-size:15px;}
+    .verbs-simple .verbs-summary{margin-top:24px;padding:16px;border-radius:16px;background:#f9fafb;font-size:15px;}
+    @media (prefers-color-scheme: dark){
+      .verbs-simple .verbs-options button{background:#1f2937;color:#f9fafb;box-shadow:0 2px 0 rgba(0,0,0,.25) inset;}
+      .verbs-simple .verbs-options button.correct{background:#14532d;color:#bbf7d0;}
+      .verbs-simple .verbs-options button.wrong{background:#7f1d1d;color:#fee2e2;}
+      .verbs-simple .verbs-summary{background:#1f2937;color:#e5e7eb;}
+    }
+  `);
+
+  const root = el('section', 'verbs-simple');
+  const wrap = el('div', 'ui-wrap');
+  const controls = el('div', 'ui-row');
+  const bBack = el('button', 'btn ghost', '← Назад');
+  const bImport = el('button', 'btn', 'Импорт JSON');
+  const bExport = el('button', 'btn', 'Экспорт JSON');
+  const bStart = el('button', 'btn primary', 'Старт сессии');
+  controls.append(bBack, bImport, bExport, bStart);
+
+  const title = el('h2', null, 'Глаголы');
+  const translation = el('div', 'verbs-translation');
+  const progress = el('div', 'verbs-progress');
+  const question = el('div', 'verbs-question', 'Здесь появится задание.');
+  const options = el('div', 'verbs-options');
+  const feedback = el('div', 'verbs-feedback');
+  const nextRow = el('div', 'ui-row');
+  const bNext = el('button', 'btn primary hidden', 'Дальше');
+  nextRow.append(bNext);
+  const summary = el('div', 'verbs-summary hidden');
+  const note = el('div', 'note', 'Импортируйте JSON с карточками глаголов — они появятся в общих проходах. Здесь же можно тренировать только глаголы.');
+
+  const toaster = makeToaster(wrap);
+
+  wrap.append(controls, title, translation, progress, question, options, feedback, nextRow, summary, note, toaster.el);
+  root.appendChild(wrap);
+  container.appendChild(root);
+
+  function hideNext() {
+    bNext.classList.add('hidden');
+    bNext.disabled = true;
+  }
+  function showNext(label, handler) {
+    bNext.textContent = label || 'Дальше';
+    bNext.onclick = handler;
+    bNext.disabled = false;
+    bNext.classList.remove('hidden');
+  }
+
+  return {
+    root,
+    buttons: {bBack, bImport, bExport, bStart, bNext},
+    title,
+    translation,
+    progress,
+    question,
+    options,
+    feedback,
+    summary,
+    note,
+    toaster,
+    clearOptions() {
+      clear(options);
+    },
+    renderOptions(list, onPick) {
+      clear(options);
+      list.forEach((label) => {
+        const btn = el('button', null, label);
+        btn.addEventListener('click', () => onPick(label, btn));
+        options.appendChild(btn);
+      });
+    },
+    setTitle(text) {
+      title.textContent = text || 'Глаголы';
+    },
+    setTranslation(text) {
+      translation.textContent = text || '';
+    },
+    setProgress(text) {
+      progress.textContent = text || '';
+    },
+    setQuestion(text) {
+      question.textContent = text || '';
+    },
+    setFeedback(text) {
+      feedback.textContent = text || '';
+    },
+    showSummary(text) {
+      summary.textContent = text || '';
+      summary.classList.toggle('hidden', !text);
+    },
+    showNote(text) {
+      note.textContent = text || '';
+      note.classList.toggle('hidden', !text);
+    },
+    hideNote() {
+      note.classList.add('hidden');
+    },
+    showNext,
+    hideNext,
+    destroy() {
+      root.remove();
+    }
+  };
+}
+
+function formatAccuracy(entry) {
+  if (!entry) return '';
+  const seen = entry.seen || 0;
+  if (!seen) return '';
+  const pct = Math.round(((entry.correct || 0) / seen) * 100);
+  return `Точность: ${pct}% (${entry.correct}/${seen})`;
+}
+
+const screen = {
+  mounted: false,
+  ui: null,
+  opts: {},
+  session: null,
+  mount(container, opts = {}) {
+    this.opts = opts;
+    this.ui = createUI(container);
+    this.mounted = true;
+    const {bBack, bImport, bExport, bStart} = this.ui.buttons;
+    bBack.addEventListener('click', () => {
+      opts.onBack && opts.onBack();
+    });
+    bImport.addEventListener('click', () => this.handleImport());
+    bExport.addEventListener('click', () => this.handleExport());
+    bStart.addEventListener('click', () => this.startSession());
+    this.refreshState();
+    return this;
+  },
+  refreshState() {
+    const cards = (window.verbdb && window.verbdb.listCards) ? window.verbdb.listCards() : [];
+    if (!cards.length) {
+      this.ui.setTitle('Глаголы');
+      this.ui.setTranslation('');
+      this.ui.setProgress('');
+      this.ui.setQuestion('Здесь появится задание.');
+      this.ui.clearOptions();
+      this.ui.setFeedback('');
+      this.ui.showSummary('');
+      this.ui.showNote('Импортируйте JSON с карточками глаголов — после импорта они будут участвовать в обычных проходах.');
+      this.ui.hideNext();
+      return;
+    }
+    const first = cards[0];
+    const prog = window.verbdb.getProgress ? window.verbdb.getProgress(first.id) : null;
+    this.ui.setTitle(first.cue || first.lemma || 'Глаголы');
+    this.ui.setTranslation(first.translation || '');
+    this.ui.setProgress(formatAccuracy(prog));
+    this.ui.setQuestion('Нажмите «Старт сессии», чтобы потренироваться.');
+    this.ui.clearOptions();
+    this.ui.setFeedback('');
+    this.ui.showSummary('Всего карточек: ' + cards.length);
+    this.ui.hideNext();
+    this.ui.showNote('Глаголы уже в общем расписании. Хотите отдельную тренировку — нажмите «Старт сессии».');
+  },
+  async handleImport() {
+    if (!file.pickTextFile) {
+      this.ui.toaster.show('Импорт недоступен в этом браузере', true);
+      return;
+    }
+    const picked = await file.pickTextFile();
+    if (!picked || !picked.text) return;
+    try {
+      const res = window.verbdb.importJSON(picked.text);
+      this.ui.toaster.show(`Импортировано карточек: ${res.cards}`);
+    } catch (e) {
+      this.ui.toaster.show(e.message || 'Не удалось импортировать JSON', true);
+    }
+    this.refreshState();
+  },
+  handleExport() {
+    if (!window.verbdb || !window.verbdb.exportJSON) {
+      this.ui.toaster.show('Экспорт недоступен', true);
+      return;
+    }
+    const text = window.verbdb.exportJSON();
+    if (file.downloadText) file.downloadText('lexi-verbs.json', text);
+    else this.ui.toaster.show('Скопируйте данные:\n' + text);
+  },
+  startSession() {
+    const cards = (window.verbdb && window.verbdb.listCards) ? window.verbdb.listCards() : [];
+    if (!cards.length) {
+      this.ui.toaster.show('Нет карточек. Импортируйте JSON.', true);
+      return;
+    }
+    this.session = {
+      cards,
+      cardIdx: 0,
+      questionIdx: 0,
+      totalCorrect: 0,
+      answered: 0,
+      cardCorrect: true
+    };
+    this.ui.hideNote();
+    this.showCurrentCard();
+  },
+  currentCard() {
+    if (!this.session) return null;
+    return this.session.cards[this.session.cardIdx] || null;
+  },
+  showCurrentCard() {
+    const card = this.currentCard();
+    if (!card) return this.finishSession();
+    this.session.questionIdx = 0;
+    this.session.cardCorrect = true;
+    this.ui.setTitle(card.cue || card.lemma || 'Карточка');
+    this.ui.setTranslation(card.translation || '');
+    const prog = window.verbdb.getProgress ? window.verbdb.getProgress(card.id) : null;
+    this.ui.setProgress(formatAccuracy(prog));
+    this.ui.showSummary(`Карточка ${this.session.cardIdx + 1} из ${this.session.cards.length}`);
+    this.showCurrentQuestion();
+  },
+  showCurrentQuestion() {
+    const card = this.currentCard();
+    if (!card) return;
+    const questions = card.questions || [];
+    const question = questions[this.session.questionIdx];
+    if (!question) return this.finishCard();
+    this.ui.setQuestion(question.prompt);
+    this.ui.setFeedback('');
+    this.ui.hideNext();
+    const options = question.options || [];
+    this.ui.renderOptions(options, (label, btn) => {
+      this.handleAnswer(question, label, btn);
+    });
+  },
+  handleAnswer(question, choice, btn) {
+    const card = this.currentCard();
+    if (!card) return;
+    const opts = Array.from(this.ui.options.querySelectorAll('button'));
+    opts.forEach(b => b.disabled = true);
+    if (choice === question.answer) {
+      btn.classList.add('correct');
+      this.session.totalCorrect += 1;
+      this.ui.setFeedback('Верно!');
+    } else {
+      btn.classList.add('wrong');
+      this.session.cardCorrect = false;
+      this.ui.setFeedback(`Нужно: ${question.answer}`);
+      opts.forEach((b) => {
+        if (b.textContent === question.answer) b.classList.add('correct');
+      });
+    }
+    this.session.answered += 1;
+    const isLastStep = this.session.questionIdx >= (card.questions.length - 1);
+    this.ui.showNext(isLastStep ? 'Следующая карточка' : 'Следующий шаг', () => {
+      this.ui.hideNext();
+      if (isLastStep) {
+        this.finishCard();
+      } else {
+        this.session.questionIdx += 1;
+        this.showCurrentQuestion();
+      }
+    });
+  },
+  finishCard() {
+    const card = this.currentCard();
+    if (card && window.verbdb && window.verbdb.recordResult) {
+      window.verbdb.recordResult(card.id, this.session.cardCorrect);
+    }
+    this.session.cardIdx += 1;
+    this.session.questionIdx = 0;
+    this.showCurrentCard();
+  },
+  finishSession() {
+    const total = this.session ? this.session.cards.length : 0;
+    const done = this.session ? this.session.cardIdx : 0;
+    this.ui.setQuestion('Сессия завершена.');
+    this.ui.clearOptions();
+    this.ui.setFeedback('');
+    this.ui.showSummary(`Ответов: ${this.session?.answered || 0}. Карточек пройдено: ${done} из ${total}.`);
+    this.ui.showNext('Вернуться к списку', () => {
+      this.ui.hideNext();
+      this.session = null;
+      this.refreshState();
+    });
+  },
+  destroy() {
+    this.session = null;
+    if (this.ui) this.ui.destroy();
+    this.mounted = false;
+  }
+};
+
+window.screens = window.screens || {};
+window.screens.verbs = screen;
+})();
+
+/* ===== END JS ===== */
+
 /* ===== BEGIN JS: src/js/app.js ===== */
 /* app.js — корневой контроллер оффлайн-SPA с простым встроенным роутером
    Модель: «толстые экраны, простой роутер».
@@ -5619,13 +6357,19 @@ const session = {
   size: settings.roundSize,
   index: 0,
   results: [],
-  baseAcc: 0
+  baseAcc: 0,
+  plan: [],
+  verbs: [],
+  verbIndex: 0
 };
 function resetSession(size) {
   session.running = true;
   session.size = size;
   session.index = 0;
   session.results = [];
+  session.plan = [];
+  session.verbs = [];
+  session.verbIndex = 0;
 }
 
 // ---------- экраны ----------
@@ -5644,7 +6388,8 @@ function showHome() {
       onDb: () => showDbList(),
       onAdd: () => showDbItemAdd(),
       onImport: () => doImport(),
-      onExport: () => doExport()
+      onExport: () => doExport(),
+      onVerbs: () => showVerbs()
     });
     (async () => {
       try {
@@ -5657,11 +6402,69 @@ function showHome() {
   });
 }
 
+function showVerbs() {
+  router.go('verbs', () => {
+    const api = window.screens.verbs;
+    if (!api || typeof api.mount !== 'function') {
+      alert('Экран глаголов недоступен');
+      showHome();
+      return null;
+    }
+    return api.mount(mountRoot, {
+      onBack: () => showHome()
+    });
+  });
+}
+
+async function buildRoundPlan(size) {
+  const plan = [];
+  const verbs = (window.verbdb && typeof window.verbdb.listCards === 'function')
+      ? window.verbdb.listCards() : [];
+  let nounIds = [];
+  try {
+    nounIds = await window.lexidb.listTermIds();
+  } catch (e) {
+    nounIds = [];
+  }
+  const haveNouns = nounIds.length > 0;
+  const haveVerbs = verbs.length > 0;
+  if (!haveNouns && !haveVerbs) return {plan: [], verbs: []};
+
+  let vIdx = 0;
+  for (let i = 0; i < size; i++) {
+    const useVerb = haveVerbs && (!haveNouns || (i % 2 === 1));
+    if (useVerb) {
+      plan.push({kind: 'verb', verbIndex: vIdx % verbs.length});
+      vIdx += 1;
+    } else {
+      plan.push({kind: 'noun'});
+    }
+  }
+  if (haveVerbs && plan.length && !plan.some((item) => item.kind === 'verb')) {
+    plan[plan.length - 1] = {kind: 'verb', verbIndex: 0};
+  }
+  return {plan, verbs};
+}
+
 async function startRound(size) {
   await window.lexidb.open?.();
   resetSession(size);
+  const {plan, verbs} = await buildRoundPlan(size);
+  if (!plan.length) {
+    alert('Добавьте слова или импортируйте глаголы, чтобы начать проход.');
+    session.running = false;
+    showHome();
+    return;
+  }
+  session.plan = plan;
+  session.size = plan.length;
+  session.verbs = verbs;
   session.baseAcc = await avgAccNow();
-  log('round start', {size, baseAcc: session.baseAcc.toFixed(3)});
+  log('round start', {
+    size: plan.length,
+    baseAcc: session.baseAcc.toFixed(3),
+    verbs: verbs.length
+  });
   nextExercise();
 }
 
@@ -5671,20 +6474,32 @@ function nextExercise() {
   if (session.index >= session.size) {
     return finishRound();
   }
+  const entry = session.plan[session.index] || {kind: 'noun'};
   router.go('excercise', () => {
     const ex = window.screens.excercise;
-    ex.mount(mountRoot, {
-      progress: {index: session.index + 1, total: session.size},  // опционально
+    const opts = {
+      progress: {index: session.index + 1, total: session.size},
       onDone: (payload) => {
         if (payload && payload.aborted) {
           session.running = false;
+          showHome();
           return;
         }
         session.results.push(payload);
         session.index += 1;
         nextExercise();
       }
-    });
+    };
+    if (entry.kind === 'verb') {
+      const card = session.verbs[entry.verbIndex] || null;
+      if (!card) {
+        opts.kind = 'noun';
+      } else {
+        opts.kind = 'verb';
+        opts.card = card;
+      }
+    }
+    ex.mount(mountRoot, opts);
     return ex;
   });
 }
@@ -5692,6 +6507,7 @@ function nextExercise() {
 async function finishRound() {
   const after = await avgAccNow();
   const deltaPp = Math.round((after - session.baseAcc) * 100);  // п.п.
+  session.running = false;
   showRoundResult(deltaPp);
 }
 
@@ -5718,9 +6534,11 @@ const review = {
 };
 
 function startReviewSequence(list) {
-  if (!Array.isArray(list) || list.length === 0)
+  const onlyNouns = Array.isArray(list)
+      ? list.filter((item) => item && item.kind !== 'verb') : [];
+  if (!onlyNouns.length)
     return startRound(settings.roundSize);
-  review.list = list.slice();
+  review.list = onlyNouns.slice();
   review.idx = 0;
   review.deleted = new Set();
   showOneResult();

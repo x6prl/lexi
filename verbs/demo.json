@@ -1,0 +1,48 @@
+[
+  {
+    "id": "helfen-dat",
+    "lemma": "helfen",
+    "cue": "jemandem helfen",
+    "translation": "помогать кому-то",
+    "questions": [
+      {
+        "prompt": "Какой падеж требуется после helfen?",
+        "options": ["Dat", "Akk", "Nom"],
+        "answer": "Dat"
+      },
+      {
+        "prompt": "Präteritum (er/sie/es)",
+        "options": ["half", "hilfte", "holf"],
+        "answer": "half"
+      },
+      {
+        "prompt": "Partizip II",
+        "options": ["geholfen", "geholfte", "gehilft"],
+        "answer": "geholfen"
+      }
+    ]
+  },
+  {
+    "id": "warten-auf",
+    "lemma": "warten",
+    "cue": "auf etwas warten",
+    "translation": "ждать чего-то",
+    "questions": [
+      {
+        "prompt": "Какой предлог нужен для warten?",
+        "options": ["auf", "an", "für"],
+        "answer": "auf"
+      },
+      {
+        "prompt": "Полная связка с артиклем: Wir warten ___ Bus.",
+        "options": ["auf den", "auf dem", "an den"],
+        "answer": "auf den"
+      },
+      {
+        "prompt": "Perfekt (er/sie)",
+        "options": ["hat gewartet", "ist gewartet", "hat ge warten"],
+        "answer": "hat gewartet"
+      }
+    ]
+  }
+]

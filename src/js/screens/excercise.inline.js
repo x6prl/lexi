@@ -62,12 +62,17 @@ const state = {
   // данные упражнения
   term: null,   // {id, art, de, pl, ru[]}
   mode: 'MC5',  // 'MC5'|'CHUNKS'|'COMPOSE'
+  kind: 'noun', // 'noun'|'verb'
+  card: null,
   steps: [],    // [{type, options, correct, widget:'keypad'|'list', idx?}]
   stepIndex: 0,
   picks: {article: null, word: null, plural: null, chunks: [], letters: []},
+  verbAnswers: {},
   errors: 0,
   // DOM
   els: null,
+  summary: null,
+  summaryItems: null,
   widget: null,  // текущий инстанс Keypad/WordChoice
   onDone: null,
   layout: null
@@ -188,19 +193,80 @@ function normalizeKeypadItems(stepType, correct, options, fallbackFactory) {
   return rndShuffle(items.slice(0, 6));
 }
 
+function normalizeVerbChoice(correct, options) {
+  const seen = new Set();
+  const out = [];
+  const add = (val) => {
+    const s = String(val || '').trim();
+    if (!s) return;
+    if (!seen.has(s)) {
+      seen.add(s);
+      out.push(s);
+    }
+  };
+  add(correct);
+  (Array.isArray(options) ? options : []).forEach(add);
+  if (out.length < 2) add(correct ? '—' : 'нет');
+  return out;
+}
+
+function prepareVerbOptions(correct, options) {
+  const base = normalizeVerbChoice(correct, options);
+  const maxLen = base.reduce((m, x) => Math.max(m, x.length), 0);
+  if (maxLen <= 3) {
+    const padded = base.slice(0, 6);
+    while (padded.length < 3) padded.push('—');
+    return {widget: 'keypad', options: rndShuffle(padded)};
+  }
+  const padded = base.slice(0, 5);
+  while (padded.length < 5) padded.push('—');
+  return {widget: 'list', options: rndShuffle(padded)};
+}
+
+function summarizePrompt(prompt) {
+  const text = String(prompt || '').trim();
+  if (!text) return '—';
+  if (text.length <= 18) return text;
+  return text.slice(0, 15).trim() + '…';
+}
+
+function createVerbSteps(card) {
+  const steps = [];
+  if (!card) return steps;
+  const questions = Array.isArray(card.questions) ? card.questions : [];
+  questions.forEach((q, idx) => {
+    if (!q || !q.prompt || !q.answer) return;
+    const prep = prepareVerbOptions(q.answer, q.options || []);
+    const summaryKey = String(q.id || q.key || `verb-${idx}`);
+    steps.push({
+      type: 'verb-step',
+      kind: 'verb',
+      prompt: String(q.prompt),
+      correct: String(q.answer),
+      options: prep.options,
+      widget: prep.widget,
+      summaryKey,
+      summaryLabel: summarizePrompt(q.summary || q.prompt)
+    });
+  });
+  return steps;
+}
+
 // ---------- планировщики шагов ----------
 async function planForMC5(term) {
   const articleStep = {
     type: 'article',
+    prompt: 'Выберите артикль',
     correct: term.art,
     options: normalizeKeypadItems('article', term.art, ['der', 'die', 'das']),
     widget: 'keypad'
   };
   const words = await wordChoices(term.art, term.de, 5);
   const wordStep =
-      {type: 'word', correct: term.de, options: words, widget: 'list'};
+      {type: 'word', prompt: 'Выберите слово', correct: term.de, options: words, widget: 'list'};
   const pluralStep = {
     type: 'plural',
+    prompt: 'Множественное число',
     correct: term.pl,
     options: normalizeKeypadItems(
         'plural', term.pl, pluralOptions(term.pl, 6),
@@ -214,6 +280,7 @@ async function planForChunks(term) {
   const steps = [];
   steps.push({
     type: 'article',
+    prompt: 'Выберите артикль',
     correct: term.art,
     options: normalizeKeypadItems('article', term.art, ['der', 'die', 'das']),
     widget: 'keypad'
@@ -229,6 +296,7 @@ async function planForChunks(term) {
     steps.push({
       type: 'chunk',
       idx: i,
+      prompt: 'Соберите слово',
       correct: corr,
       options: opts,
       widget: 'keypad'
@@ -236,6 +304,7 @@ async function planForChunks(term) {
   }
   steps.push({
     type: 'plural',
+    prompt: 'Множественное число',
     correct: term.pl,
     options: normalizeKeypadItems(
         'plural', term.pl, pluralOptions(term.pl, 6),
@@ -249,6 +318,7 @@ async function planForCompose(term) {
   const steps = [];
   steps.push({
     type: 'article',
+    prompt: 'Выберите артикль',
     correct: term.art,
     options: normalizeKeypadItems('article', term.art, ['der', 'die', 'das']),
     widget: 'keypad'
@@ -262,6 +332,7 @@ async function planForCompose(term) {
     steps.push({
       type: 'letter',
       idx: i,
+      prompt: 'Соберите слово',
       correct: corr,
       options: opts,
       widget: 'keypad'
@@ -269,6 +340,7 @@ async function planForCompose(term) {
   }
   steps.push({
     type: 'plural',
+    prompt: 'Множественное число',
     correct: term.pl,
     options: normalizeKeypadItems(
         'plural', term.pl, pluralOptions(term.pl, 6),
@@ -279,7 +351,7 @@ async function planForCompose(term) {
 }
 
 // ---------- построение UI ----------
-function buildUI(container, ruTitle, progress) {
+function buildUI(container, title, progress, summaryConfig) {
   if (state.layout) state.layout.destroy();
   clear(container);
 
@@ -297,15 +369,18 @@ function buildUI(container, ruTitle, progress) {
   topbar.append(prog, layoutBtn);
   wrap.appendChild(topbar);
 
-  const h1 = el('h1', null, (ruTitle || '').toUpperCase());
+  const h1 = el('h1', null, (title || '').toUpperCase());
   wrap.appendChild(h1);
 
-  const summary = window.exerciseUI.createSummary([
-    {id: 'article', label: 'Артикль:'},
-    {id: 'word', label: 'Слово:'},
-    {id: 'plural', label: 'Мн. ч.:'}
-  ]);
+  const summary = window.exerciseUI.createSummary(summaryConfig || []);
   wrap.appendChild(summary.root);
+
+  const prompt = el('div', 'ex-prompt', '');
+  prompt.style.marginTop = '14px';
+  prompt.style.fontSize = '18px';
+  prompt.style.fontWeight = '600';
+  prompt.style.letterSpacing = '0.02em';
+  wrap.appendChild(prompt);
 
   const mount = el('div', 'mount');
   wrap.appendChild(mount);
@@ -332,6 +407,7 @@ function buildUI(container, ruTitle, progress) {
     wrap,
     prog,
     h1,
+    prompt,
     topbar,
     layoutBtn,
     layoutModal: layouts.root,
@@ -340,13 +416,12 @@ function buildUI(container, ruTitle, progress) {
     layoutReset: layouts.reset,
     layoutClose: layouts.close,
     layoutBackdrop: layouts.backdrop,
-    chips: summary.root,
-    chArt: summary.items.article,
-    chWord: summary.items.word,
-    chPl: summary.items.plural,
+    summaryRoot: summary.root,
     mount,
     btnBack
   };
+  state.summary = summary;
+  state.summaryItems = summary.items;
   root.tabIndex = 0;
   setTimeout(() => root.focus(), 0);
 
@@ -356,6 +431,7 @@ function buildUI(container, ruTitle, progress) {
       topbar,
       heading: h1,
       summary: summary.root,
+      prompt,
       mount,
       backBtn: btnBack,
       layoutModal: layouts.root,
@@ -377,32 +453,51 @@ function formatLayoutShift(v) {
 }
 
 // ---------- прогресс/заголовки ----------
-function updateChipsForMode() {
-  const {chArt, chWord, chPl} = state.els;
-  // Артикль
-  chArt.set(state.picks.article || '—');
-
-  // Слово: отображение зависит от режима/шага
-  if (state.mode === 'MC5') {
-    chWord.set(state.picks.word || '—');
-  } else if (state.mode === 'CHUNKS') {
-    const parts = state.picks.chunks.slice();
-    const remaining =
-        window.lexiparts.splitChunks(state.term.de).length - parts.length;
-    const masked = parts.join('') +
-        (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
-    chWord.set(masked || '•');
-  } else {  // COMPOSE
-    const letters = state.picks.letters.slice();
-    const remaining =
-        window.lexiparts.splitCompose(state.term.de).length - letters.length;
-    const masked = letters.join('') +
-        (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
-    chWord.set(masked || '•');
+function updateSummaryView() {
+  if (!state.summaryItems) return;
+  if (state.kind === 'verb') {
+    const lemmaItem = state.summaryItems.lemma;
+    if (lemmaItem) {
+      const lemma = state.card?.lemma || state.card?.cue || state.card?.id;
+      lemmaItem.set(lemma || '—');
+    }
+    state.steps.forEach((step) => {
+      if (!step.summaryKey) return;
+      const item = state.summaryItems[step.summaryKey];
+      if (!item) return;
+      const picked = state.verbAnswers[step.summaryKey]?.picked;
+      item.set(picked || '•');
+    });
+    state.layout?.schedule('chips');
+    return;
   }
 
-  // Плюрал
-  chPl.set(state.picks.plural || '—');
+  const chArt = state.summaryItems.article;
+  const chWord = state.summaryItems.word;
+  const chPl = state.summaryItems.plural;
+  if (chArt) chArt.set(state.picks.article || '—');
+
+  if (chWord) {
+    if (state.mode === 'MC5') {
+      chWord.set(state.picks.word || '—');
+    } else if (state.mode === 'CHUNKS') {
+      const parts = state.picks.chunks.slice();
+      const remaining =
+          window.lexiparts.splitChunks(state.term.de).length - parts.length;
+      const masked = parts.join('') +
+          (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
+      chWord.set(masked || '•');
+    } else {
+      const letters = state.picks.letters.slice();
+      const remaining =
+          window.lexiparts.splitCompose(state.term.de).length - letters.length;
+      const masked = letters.join('') +
+          (remaining > 0 ? '•'.repeat(Math.max(1, remaining)) : '');
+      chWord.set(masked || '•');
+    }
+  }
+
+  if (chPl) chPl.set(state.picks.plural || '—');
 
   state.layout?.schedule('chips');
 }
@@ -422,6 +517,8 @@ function mountStep() {
     return;
   }
   const M = state.els.mount;
+  if (state.els.prompt)
+    state.els.prompt.textContent = s.prompt || '';
   // очистка предыдущего виджета
   if (state.widget && state.widget.destroy) try {
       state.widget.destroy();
@@ -484,11 +581,13 @@ function handlePick(step, value) {
     state.picks.chunks[step.idx] = picked;  // фиксируем позицию
   } else if (step.type === 'letter') {
     state.picks.letters[step.idx] = picked;
+  } else if (step.kind === 'verb') {
+    state.verbAnswers[step.summaryKey] = {picked, correct};
   }
 
   if (!ok) state.errors++;
 
-  updateChipsForMode();
+  updateSummaryView();
 
   // следующий шаг или завершение
   if (state.stepIndex < state.steps.length - 1) {
@@ -540,9 +639,11 @@ function onBackClick() {
     state.picks.chunks = state.picks.chunks.slice(0, step.idx);
   else if (step.type === 'letter')
     state.picks.letters = state.picks.letters.slice(0, step.idx);
+  else if (step.kind === 'verb' && step.summaryKey)
+    delete state.verbAnswers[step.summaryKey];
 
   state.stepIndex--;
-  updateChipsForMode();
+  updateSummaryView();
   mountStep();
 }
 
@@ -551,6 +652,8 @@ function recomputeErrorsUpTo(lastIdx) {
   for (let i = 0; i < lastIdx; i++) {
     const st = state.steps[i];
     const v = (() => {
+      if (st.kind === 'verb')
+        return state.verbAnswers[st.summaryKey]?.picked;
       if (st.type === 'article') return state.picks.article;
       if (st.type === 'word') return state.picks.word;
       if (st.type === 'plural') return state.picks.plural;
@@ -565,6 +668,10 @@ function recomputeErrorsUpTo(lastIdx) {
 
 // ---------- завершение упражнения ----------
 async function finishExercise() {
+  if (state.kind === 'verb') {
+    await finishVerbExercise();
+    return;
+  }
   const correct = {
     article: state.term.art,
     word: state.term.de,
@@ -606,6 +713,44 @@ async function finishExercise() {
   }
 }
 
+async function finishVerbExercise() {
+  const card = state.card || {};
+  let errors = 0;
+  const answers = {};
+  const correctMap = {};
+  state.steps.forEach((step) => {
+    if (!step.summaryKey) return;
+    const picked = state.verbAnswers[step.summaryKey]?.picked || null;
+    answers[step.summaryKey] = picked;
+    correctMap[step.summaryKey] = step.correct;
+    if (String(picked) !== String(step.correct)) errors++;
+  });
+  state.errors = errors;
+  const success = errors === 0;
+  log('done verb:', {
+    id: card.id,
+    success,
+    errors,
+    answers
+  });
+  try {
+    if (card.id && window.verbdb?.recordResult)
+      window.verbdb.recordResult(card.id, success);
+  } catch (e) {
+    console.warn('[exercise] verb recordResult failed', e);
+  }
+  if (typeof state.onDone === 'function') {
+    state.onDone({
+      kind: 'verb',
+      card,
+      success,
+      errors,
+      answers,
+      correct: correctMap
+    });
+  }
+}
+
 // ---------- загрузка следующей карточки (или указанной) ----------
 async function loadPayload(opts) {
   const progress = opts &&
@@ -618,7 +763,49 @@ async function loadPayload(opts) {
   if (seed != null && window.lexiparts && window.lexiparts.setSeed)
     window.lexiparts.setSeed(seed);
 
-  // получаем задачу
+  const target = state.container ||
+      document.getElementById('root') ||
+      document.getElementById('app') ||
+      document.body;
+  if (!target) return;
+  if (!state.container) state.container = target;
+
+  if (opts && opts.kind === 'verb' && opts.card) {
+    state.kind = 'verb';
+    state.card = opts.card;
+    state.term = null;
+    state.mode = 'VERB';
+    state.picks = {article: null, word: null, plural: null, chunks: [], letters: []};
+    state.verbAnswers = {};
+    state.errors = 0;
+    const steps = createVerbSteps(opts.card);
+    state.steps = steps;
+    const summaryConfig = [
+      {id: 'lemma', label: 'Инфинитив:', initial: opts.card.lemma || opts.card.cue || opts.card.id || '—'}
+    ];
+    steps.forEach((step) => {
+      summaryConfig.push({id: step.summaryKey, label: step.summaryLabel});
+    });
+    const title = opts.card.translation || opts.card.cue || opts.card.lemma || 'Глагол';
+    buildUI(state.container, title, progress, summaryConfig);
+    attachBackHandler();
+    if (!steps.length) {
+      if (typeof state.onDone === 'function') {
+        state.onDone({kind: 'verb', card: opts.card, success: true, errors: 0, answers: {}, correct: {}});
+      }
+      return;
+    }
+    state.stepIndex = 0;
+    updateSummaryView();
+    mountStep();
+    return;
+  }
+
+  // noun flow
+  state.kind = 'noun';
+  state.card = null;
+  state.verbAnswers = {};
+
   let termId = opts && opts.termId;
   let mode = opts && opts.mode;
   if (!termId) {
@@ -634,22 +821,16 @@ async function loadPayload(opts) {
   state.picks =
       {article: null, word: null, plural: null, chunks: [], letters: []};
   state.errors = 0;
-  state.steps = [];
 
   const ruTitle = (Array.isArray(term.ru) && term.ru[0]) ? term.ru[0] : term.de;
-  const target = state.container ||
-      document.getElementById('root') ||
-      document.getElementById('app') ||
-      document.body;
-  if (!target) return;
-  if (!state.container) state.container = target;
-  buildUI(state.container, ruTitle, progress);
+  const summaryConfig = [
+    {id: 'article', label: 'Артикль:'},
+    {id: 'word', label: 'Слово:'},
+    {id: 'plural', label: 'Мн. ч.:'}
+  ];
+  buildUI(state.container, ruTitle, progress, summaryConfig);
   attachBackHandler();
 
-  // Предварительная маска словечка в CHUNKS/COMPOSE
-  updateChipsForMode();
-
-  // план (с нормализацией опций внутри планировщиков)
   if (state.mode === 'MC5')
     state.steps = await planForMC5(term);
   else if (state.mode === 'CHUNKS')
@@ -658,6 +839,7 @@ async function loadPayload(opts) {
     state.steps = await planForCompose(term);
 
   state.stepIndex = 0;
+  updateSummaryView();
   mountStep();
 }
 
@@ -682,7 +864,11 @@ const api = {
       await window.lexidb.open?.();
       state.layout?.load();
       await loadPayload(opts);
-      log('mounted', {id: state.term && state.term.id, mode: state.mode});
+      log('mounted', {
+        kind: state.kind,
+        id: state.kind === 'verb' ? state.card?.id : state.term?.id,
+        mode: state.mode
+      });
     } catch (e) {
       console.error('[exercise] mount error:', e);
       const fallback =
@@ -708,6 +894,12 @@ const api = {
     state.root = null;
     state.els = null;
     state.widget = null;
+    state.summary = null;
+    state.summaryItems = null;
+    state.card = null;
+    state.kind = 'noun';
+    state.verbAnswers = {};
+    state.steps = [];
     log('destroyed');
   }
 };

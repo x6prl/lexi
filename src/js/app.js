@@ -156,13 +156,19 @@ const session = {
   size: settings.roundSize,
   index: 0,
   results: [],
-  baseAcc: 0
+  baseAcc: 0,
+  plan: [],
+  verbs: [],
+  verbIndex: 0
 };
 function resetSession(size) {
   session.running = true;
   session.size = size;
   session.index = 0;
   session.results = [];
+  session.plan = [];
+  session.verbs = [];
+  session.verbIndex = 0;
 }
 
 // ---------- экраны ----------
@@ -181,7 +187,8 @@ function showHome() {
       onDb: () => showDbList(),
       onAdd: () => showDbItemAdd(),
       onImport: () => doImport(),
-      onExport: () => doExport()
+      onExport: () => doExport(),
+      onVerbs: () => showVerbs()
     });
     (async () => {
       try {
@@ -194,11 +201,69 @@ function showHome() {
   });
 }
 
+function showVerbs() {
+  router.go('verbs', () => {
+    const api = window.screens.verbs;
+    if (!api || typeof api.mount !== 'function') {
+      alert('Экран глаголов недоступен');
+      showHome();
+      return null;
+    }
+    return api.mount(mountRoot, {
+      onBack: () => showHome()
+    });
+  });
+}
+
+async function buildRoundPlan(size) {
+  const plan = [];
+  const verbs = (window.verbdb && typeof window.verbdb.listCards === 'function')
+      ? window.verbdb.listCards() : [];
+  let nounIds = [];
+  try {
+    nounIds = await window.lexidb.listTermIds();
+  } catch (e) {
+    nounIds = [];
+  }
+  const haveNouns = nounIds.length > 0;
+  const haveVerbs = verbs.length > 0;
+  if (!haveNouns && !haveVerbs) return {plan: [], verbs: []};
+
+  let vIdx = 0;
+  for (let i = 0; i < size; i++) {
+    const useVerb = haveVerbs && (!haveNouns || (i % 2 === 1));
+    if (useVerb) {
+      plan.push({kind: 'verb', verbIndex: vIdx % verbs.length});
+      vIdx += 1;
+    } else {
+      plan.push({kind: 'noun'});
+    }
+  }
+  if (haveVerbs && plan.length && !plan.some((item) => item.kind === 'verb')) {
+    plan[plan.length - 1] = {kind: 'verb', verbIndex: 0};
+  }
+  return {plan, verbs};
+}
+
 async function startRound(size) {
   await window.lexidb.open?.();
   resetSession(size);
+  const {plan, verbs} = await buildRoundPlan(size);
+  if (!plan.length) {
+    alert('Добавьте слова или импортируйте глаголы, чтобы начать проход.');
+    session.running = false;
+    showHome();
+    return;
+  }
+  session.plan = plan;
+  session.size = plan.length;
+  session.verbs = verbs;
   session.baseAcc = await avgAccNow();
-  log('round start', {size, baseAcc: session.baseAcc.toFixed(3)});
+  log('round start', {
+    size: plan.length,
+    baseAcc: session.baseAcc.toFixed(3),
+    verbs: verbs.length
+  });
   nextExercise();
 }
 
@@ -208,20 +273,32 @@ function nextExercise() {
   if (session.index >= session.size) {
     return finishRound();
   }
+  const entry = session.plan[session.index] || {kind: 'noun'};
   router.go('excercise', () => {
     const ex = window.screens.excercise;
-    ex.mount(mountRoot, {
-      progress: {index: session.index + 1, total: session.size},  // опционально
+    const opts = {
+      progress: {index: session.index + 1, total: session.size},
       onDone: (payload) => {
         if (payload && payload.aborted) {
           session.running = false;
+          showHome();
           return;
         }
         session.results.push(payload);
         session.index += 1;
         nextExercise();
       }
-    });
+    };
+    if (entry.kind === 'verb') {
+      const card = session.verbs[entry.verbIndex] || null;
+      if (!card) {
+        opts.kind = 'noun';
+      } else {
+        opts.kind = 'verb';
+        opts.card = card;
+      }
+    }
+    ex.mount(mountRoot, opts);
     return ex;
   });
 }
@@ -229,6 +306,7 @@ function nextExercise() {
 async function finishRound() {
   const after = await avgAccNow();
   const deltaPp = Math.round((after - session.baseAcc) * 100);  // п.п.
+  session.running = false;
   showRoundResult(deltaPp);
 }
 
@@ -255,9 +333,11 @@ const review = {
 };
 
 function startReviewSequence(list) {
-  if (!Array.isArray(list) || list.length === 0)
+  const onlyNouns = Array.isArray(list)
+      ? list.filter((item) => item && item.kind !== 'verb') : [];
+  if (!onlyNouns.length)
     return startRound(settings.roundSize);
-  review.list = list.slice();
+  review.list = onlyNouns.slice();
   review.idx = 0;
   review.deleted = new Set();
   showOneResult();
