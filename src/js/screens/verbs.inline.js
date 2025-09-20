@@ -63,7 +63,7 @@ function createUI(container) {
   const bNext = el('button', 'btn primary hidden', 'Дальше');
   nextRow.append(bNext);
   const summary = el('div', 'verbs-summary hidden');
-  const note = el('div', 'note', 'Импортируйте JSON с карточками глаголов и нажмите «Старт сессии».');
+  const note = el('div', 'note', 'Импортируйте JSON с карточками глаголов — они появятся в общих проходах. Здесь же можно тренировать только глаголы.');
 
   const toaster = makeToaster(wrap);
 
@@ -176,7 +176,7 @@ const screen = {
       this.ui.clearOptions();
       this.ui.setFeedback('');
       this.ui.showSummary('');
-      this.ui.showNote('Импортируйте JSON с карточками глаголов и нажмите «Старт сессии».');
+      this.ui.showNote('Импортируйте JSON с карточками глаголов — после импорта они будут участвовать в обычных проходах.');
       this.ui.hideNext();
       return;
     }
@@ -190,7 +190,7 @@ const screen = {
     this.ui.setFeedback('');
     this.ui.showSummary('Всего карточек: ' + cards.length);
     this.ui.hideNext();
-    this.ui.showNote('');
+    this.ui.showNote('Глаголы уже в общем расписании. Хотите отдельную тренировку — нажмите «Старт сессии».');
   },
   async handleImport() {
     if (!file.pickTextFile) {

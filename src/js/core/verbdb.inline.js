@@ -43,11 +43,62 @@ function normaliseQuestion(raw, cardId, qIndex) {
     if (deduped.length >= 5) break;
   }
   if (deduped.length < 2) return null;
+  const summary = String(raw.summary || raw.short || prompt).trim();
+  const id = raw.id || raw.key || `${cardId || 'card'}-${qIndex}`;
   return {
+    id: String(id),
     prompt,
     answer,
-    options: deduped
+    options: deduped,
+    summary: summary || prompt
   };
+}
+
+function questionsFromFrame(raw, frame) {
+  const out = [];
+  if (!frame || typeof frame !== 'object') return out;
+  const marker = String(frame.probeMarker || '').trim();
+  const answerCase = String(frame.probeAnswer || '').trim();
+  if (marker && answerCase) {
+    let opts = [];
+    const payload = frame.distractors && frame.distractors.CASE_ENDING &&
+        frame.distractors.CASE_ENDING.payload;
+    if (payload) {
+      if (Array.isArray(payload.endings)) opts = opts.concat(payload.endings);
+      if (Array.isArray(payload.wrongCases))
+        opts = opts.concat(payload.wrongCases);
+    }
+    out.push({prompt: marker, answer: answerCase, options: opts, summary: 'Падеж'});
+  }
+  const praet = raw && raw.morph && raw.morph.praet3sg;
+  if (praet) {
+    let opts = [];
+    const payload = frame.distractors && frame.distractors.PRAET &&
+        frame.distractors.PRAET.payload;
+    if (payload && Array.isArray(payload.wrongPraet))
+      opts = opts.concat(payload.wrongPraet);
+    out.push({
+      prompt: 'Präteritum (er/sie/es)',
+      answer: String(praet),
+      options: opts,
+      summary: 'Präteritum'
+    });
+  }
+  const part2 = raw && raw.morph && raw.morph.part2;
+  if (part2) {
+    let opts = [];
+    const payload = frame.distractors && frame.distractors.PART2_AUX &&
+        frame.distractors.PART2_AUX.payload;
+    if (payload && Array.isArray(payload.wrongPart2))
+      opts = opts.concat(payload.wrongPart2);
+    out.push({
+      prompt: 'Partizip II',
+      answer: String(part2),
+      options: opts,
+      summary: 'Partizip II'
+    });
+  }
+  return out;
 }
 
 function normaliseCard(raw, idx) {
@@ -56,9 +107,14 @@ function normaliseCard(raw, idx) {
   const cue = String(raw.cue || raw.cueDe || lemma).trim();
   const translation = String(raw.translation || raw.cueRu || '').trim();
   const id = String(raw.id || lemma || `card-${idx}`).trim();
-  const questionsRaw = Array.isArray(raw.questions)
-      ? raw.questions
-      : Array.isArray(raw.slots) ? raw.slots : [];
+  let questionsRaw = Array.isArray(raw.questions)
+      ? raw.questions.slice()
+      : Array.isArray(raw.slots) ? raw.slots.slice() : [];
+  if ((!questionsRaw || questionsRaw.length === 0) && Array.isArray(raw.frames)) {
+    raw.frames.forEach((frame) => {
+      questionsRaw = questionsRaw.concat(questionsFromFrame(raw, frame));
+    });
+  }
   const questions = [];
   questionsRaw.forEach((q, qIndex) => {
     const norm = normaliseQuestion(q, id, qIndex);

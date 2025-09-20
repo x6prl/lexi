@@ -125,7 +125,7 @@ function build(container) {
   const bImport600 = el('button', 'btn', 'Импортировать 600 самых популярных');
   const bImportAll = el('button', 'btn', 'Импортировать всё (1200+)');
   const bAdd = el('button', 'btn', 'Добавить слово');
-  const bVerbs = el('button', 'btn', 'Verben (beta)');
+  const bVerbs = el('button', 'btn', 'Глаголы');
   const bExport = el('button', 'btn', 'Экспорт');
   const bDb = el('button', 'btn', 'База слов');
   actions.append(bImport, bAdd, bVerbs, bExport, bDb);
