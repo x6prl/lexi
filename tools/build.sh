@@ -61,6 +61,8 @@ join_js "$JS_BUNDLE" \
   "$JS_DIR/widgets/dbStatistics.inline.js" \
   "$JS_DIR/widgets/keypad.inline.js" \
   "$JS_DIR/widgets/wordchoice.inline.js" \
+  "$JS_DIR/widgets/exercise_ui.inline.js" \
+  "$JS_DIR/widgets/exercise_layout.inline.js" \
   "$JS_DIR/widgets/dbItemStatistics.inline.js" \
   "$JS_DIR/screens/home.inline.js" \
   "$JS_DIR/screens/excercise.inline.js" \
@@ -93,4 +95,3 @@ awk -v CSS_FILE="$CSS_BUNDLE_RAW" -v JS_FILE="$JS_BUNDLE" '
 ' "$TEMPLATE" > "$OUT_HTML"
 
 echo "✅ Built: $OUT_HTML"
-

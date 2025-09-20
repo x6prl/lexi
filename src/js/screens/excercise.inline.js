@@ -69,8 +69,23 @@ const state = {
   // DOM
   els: null,
   widget: null,  // текущий инстанс Keypad/WordChoice
-  onDone: null
+  onDone: null,
+  layout: null
 };
+
+const LAYOUT_SHIFT_KEY = 'lexi/exerciseLayoutShift';
+const LAYOUT_SHIFT_MIN = -40;
+const LAYOUT_SHIFT_MAX = 40;
+
+state.layout = (window.exerciseLayout &&
+                window.exerciseLayout.createController({
+                  storageKey: LAYOUT_SHIFT_KEY,
+                  min: LAYOUT_SHIFT_MIN,
+                  max: LAYOUT_SHIFT_MAX,
+                  format: formatLayoutShift,
+                  log
+                })) || null;
+state.layout?.load();
 
 // ============================================================
 // Генерация и НОРМАЛИЗАЦИЯ опций (главное правило: keypad 3..6)
@@ -265,23 +280,32 @@ async function planForCompose(term) {
 
 // ---------- построение UI ----------
 function buildUI(container, ruTitle, progress) {
+  if (state.layout) state.layout.destroy();
   clear(container);
 
   const root = el('section', 'ex');
   const wrap = el('div', 'wrap');
 
+  const topbar = el('div', 'topbar');
   const prog =
       el('div', 'progress',
          progress ? `[${progress.index}/${progress.total}]` : '');
-  const h1 = el('h1', null, (ruTitle || '').toUpperCase());
-  wrap.append(prog, h1);
+  const layoutBtn = el('button', 'layout-btn', '⇅');
+  layoutBtn.type = 'button';
+  layoutBtn.title = 'Настроить вертикальное положение';
+  layoutBtn.setAttribute('aria-label', 'Настроить вертикальное положение');
+  topbar.append(prog, layoutBtn);
+  wrap.appendChild(topbar);
 
-  const chips = el('div', 'chips');
-  const chArt = makeChip('Артикль:', '—');
-  const chWord = makeChip('Слово:', '—');
-  const chPl = makeChip('Мн. ч.:', '—');
-  chips.append(chArt.root, chWord.root, chPl.root);
-  wrap.appendChild(chips);
+  const h1 = el('h1', null, (ruTitle || '').toUpperCase());
+  wrap.appendChild(h1);
+
+  const summary = window.exerciseUI.createSummary([
+    {id: 'article', label: 'Артикль:'},
+    {id: 'word', label: 'Слово:'},
+    {id: 'plural', label: 'Мн. ч.:'}
+  ]);
+  wrap.appendChild(summary.root);
 
   const mount = el('div', 'mount');
   wrap.appendChild(mount);
@@ -291,26 +315,65 @@ function buildUI(container, ruTitle, progress) {
   btnBack.title = 'Назад';
   wrap.appendChild(btnBack);
 
+  const layouts = window.exerciseUI.createLayoutModal({
+    value: state.layout ? state.layout.getShift() : 0,
+    min: LAYOUT_SHIFT_MIN,
+    max: LAYOUT_SHIFT_MAX,
+    step: 5,
+    format: formatLayoutShift
+  });
+  wrap.appendChild(layouts.root);
+
   root.appendChild(wrap);
   container.appendChild(root);
 
   state.root = root;
-  state.els = {wrap, prog, h1, chips, chArt, chWord, chPl, mount, btnBack};
+  state.els = {
+    wrap,
+    prog,
+    h1,
+    topbar,
+    layoutBtn,
+    layoutModal: layouts.root,
+    layoutSlider: layouts.slider,
+    layoutValue: layouts.value,
+    layoutReset: layouts.reset,
+    layoutClose: layouts.close,
+    layoutBackdrop: layouts.backdrop,
+    chips: summary.root,
+    chArt: summary.items.article,
+    chWord: summary.items.word,
+    chPl: summary.items.plural,
+    mount,
+    btnBack
+  };
   root.tabIndex = 0;
   setTimeout(() => root.focus(), 0);
+
+  if (state.layout) {
+    state.layout.init({
+      wrap,
+      topbar,
+      heading: h1,
+      summary: summary.root,
+      mount,
+      backBtn: btnBack,
+      layoutModal: layouts.root,
+      layoutBackdrop: layouts.backdrop,
+      layoutSlider: layouts.slider,
+      layoutValue: layouts.value,
+      layoutReset: layouts.reset,
+      layoutClose: layouts.close,
+      layoutBtn
+    });
+  }
 }
 
-function makeChip(label, value) {
-  const root = el('div', 'chip');
-  const sub = el('span', 'sub', label);
-  const val = el('div', 'subCon', value);
-  root.append(sub, val);
-  return {
-    root,
-    set(v) {
-      val.textContent = String(v == null ? '—' : v);
-    }
-  };
+function formatLayoutShift(v) {
+  const val = clamp(v, LAYOUT_SHIFT_MIN, LAYOUT_SHIFT_MAX);
+  if (val === 0) return 'По умолчанию';
+  const sign = val > 0 ? 'ниже' : 'выше';
+  return `${Math.abs(val)}% ${sign}`;
 }
 
 // ---------- прогресс/заголовки ----------
@@ -340,6 +403,8 @@ function updateChipsForMode() {
 
   // Плюрал
   chPl.set(state.picks.plural || '—');
+
+  state.layout?.schedule('chips');
 }
 function getThemeVars(scope) {
   const cs = getComputedStyle(scope || document.documentElement);
@@ -398,6 +463,8 @@ function mountStep() {
 
   // кнопка назад активна, если уже есть сделанные шаги
   state.els.btnBack.disabled = (state.stepIndex === 0);
+
+  state.layout?.schedule('step');
 }
 
 // ---------- обработчик выбора варианта ----------
@@ -592,8 +659,18 @@ const api = {
     state.container = container;
     state.onDone =
         opts.onDone || opts.onComplete || null;  // совместимость с роутером
+    if (!state.layout && window.exerciseLayout?.createController) {
+      state.layout = window.exerciseLayout.createController({
+        storageKey: LAYOUT_SHIFT_KEY,
+        min: LAYOUT_SHIFT_MIN,
+        max: LAYOUT_SHIFT_MAX,
+        format: formatLayoutShift,
+        log
+      });
+    }
     try {
       await window.lexidb.open?.();
+      state.layout?.load();
       await loadPayload(opts);
       log('mounted', {id: state.term && state.term.id, mode: state.mode});
     } catch (e) {
@@ -610,6 +687,7 @@ const api = {
         state.widget.destroy();
       } catch (_) {
       }
+    state.layout?.destroy();
     if (state.root && state.root.parentNode)
       state.root.parentNode.removeChild(state.root);
     state.container = null;
