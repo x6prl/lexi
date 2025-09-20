@@ -504,22 +504,26 @@ function attachBackHandler() {
   state.root.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       e.preventDefault();
-      onBackClick();
+      exitToHome();
     }
   });
   state.els.btnBack.addEventListener('click', onBackClick);
 }
 
+function exitToHome() {
+  try {
+    state.onDone && state.onDone({aborted: true});
+  } catch (_) {
+  }
+  try {
+    window.app?.goHome?.();
+  } catch (_) {
+  }
+}
+
 function onBackClick() {
   if (state.stepIndex <= 0) {
-    try {
-      state.onDone && state.onDone({aborted: true});
-    } catch (_) {
-    }
-    try {
-      window.app?.goHome?.();
-    } catch (_) {
-    }
+    exitToHome();
     return;
   }
   // обычный шаг назад
