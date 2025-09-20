@@ -1,47 +1,1574 @@
 [
   {
-    "id": "helfen-dat",
     "lemma": "helfen",
-    "cue": "jemandem helfen",
-    "translation": "помогать кому-то",
-    "questions": [
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "half",
+      "part2": "geholfen",
+      "pres3sg": "hilft",
+      "stem": "helf"
+    },
+    "frames": [
       {
-        "prompt": "Какой падеж требуется после helfen?",
-        "options": ["Dat", "Akk", "Nom"],
-        "answer": "Dat"
-      },
-      {
-        "prompt": "Präteritum (er/sie/es)",
-        "options": ["half", "hilfte", "holf"],
-        "answer": "half"
-      },
-      {
-        "prompt": "Partizip II",
-        "options": ["geholfen", "geholfte", "gehilft"],
-        "answer": "geholfen"
+        "type": "DAT_VERB",
+        "cueRu": "помочь кому-то",
+        "cueDe": "jemandem helfen",
+        "caseCore": "Dativ",
+        "probeMarker": "jemand? helfen",
+        "probeAnswer": "jemandem",
+        "examples": ["Kannst du mir helfen?", "Er hilft dem Kind."],
+        "frequency": 90,
+        "colls": ["jemandem helfen", "dem Kind helfen"],
+        "contrasts": [{ "note": "helfen (Dat) ≠ unterstützen (Akk)" }],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand", "jemandes"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["unterstützen"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["helfte", "halfte"],
+              "morphNoise": ["add-te", "wrong-ablaut"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {
+              "wrongAux": "sein",
+              "wrongPart2": ["gehelft", "gehilft"]
+            }
+          }
+        }
       }
     ]
   },
   {
-    "id": "warten-auf",
+    "lemma": "danken",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "dankte",
+      "part2": "gedankt",
+      "pres3sg": "dankt",
+      "stem": "dank"
+    },
+    "frames": [
+      {
+        "type": "DAT_VERB",
+        "cueRu": "благодарить кого-то (за что-то)",
+        "cueDe": "jemandem (für etwas) danken",
+        "caseCore": "Dativ",
+        "probeMarker": "jemand? danken",
+        "probeAnswer": "jemandem",
+        "examples": ["Ich danke dir.", "Wir danken den Nachbarn."],
+        "frequency": 75,
+        "colls": ["jemandem danken", "jemandem für etwas danken"],
+        "contrasts": [
+          { "note": "danken (Dat) ↔ sich bedanken bei (Dat) / für (Akk)" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": { "wrongPraet": ["dankete"], "morphNoise": ["add-e"] }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["gedankt"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "gefallen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "gefiel",
+      "part2": "gefallen",
+      "pres3sg": "gefällt",
+      "stem": "gefall"
+    },
+    "frames": [
+      {
+        "type": "DAT_VERB",
+        "cueRu": "нравиться кому-то",
+        "cueDe": "jemandem gefallen",
+        "caseCore": "Dativ",
+        "probeMarker": "jemand? gefallen",
+        "probeAnswer": "jemandem",
+        "examples": ["Das Buch gefällt mir.", "Der Film gefiel uns."],
+        "frequency": 80,
+        "colls": ["jemandem gefällt etwas", "etwas gefällt jemandem"],
+        "contrasts": [{ "note": "gefallen (Dat) ≠ mögen (Akk)" }],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["mögen"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["gefielte"],
+              "morphNoise": ["add-te", "wrong-ablaut"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["gegefällt"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "gehören",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "gehörte",
+      "part2": "gehört",
+      "pres3sg": "gehört",
+      "stem": "gehör"
+    },
+    "frames": [
+      {
+        "type": "DAT_VERB",
+        "cueRu": "принадлежать кому-то",
+        "cueDe": "jemandem gehören",
+        "caseCore": "Dativ",
+        "probeMarker": "jemand? gehören",
+        "probeAnswer": "jemandem",
+        "examples": ["Das Fahrrad gehört mir.", "Das Haus gehört der Stadt."],
+        "frequency": 70,
+        "colls": ["etwas gehört jemandem", "jemandem gehören"],
+        "contrasts": [{ "note": "gehören (Dat) ≠ besitzen (Akk)" }],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["gehorte"],
+              "morphNoise": ["umlaut-loss"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["gegehörte"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "fehlen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "fehlte",
+      "part2": "gefehlt",
+      "pres3sg": "fehlt",
+      "stem": "fehl"
+    },
+    "frames": [
+      {
+        "type": "DAT_VERB",
+        "cueRu": "кому-то не хватать/отсутствовать",
+        "cueDe": "jemandem fehlen",
+        "caseCore": "Dativ",
+        "probeMarker": "jemand? fehlen",
+        "probeAnswer": "jemandem",
+        "examples": ["Mir fehlt die Zeit.", "Was fehlt dir?"],
+        "frequency": 65,
+        "colls": ["jemandem fehlt etwas", "es fehlt jemandem an etwas"],
+        "contrasts": [{ "note": "fehlen (Dat) ≠ vermissen (Akk)" }],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": { "wrongPraet": ["fehlete"], "morphNoise": ["add-e"] }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["gefehlte"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "folgen",
+    "aux": "SEIN",
+    "morph": {
+      "praet3sg": "folgte",
+      "part2": "gefolgt",
+      "pres3sg": "folgt",
+      "stem": "folg"
+    },
+    "frames": [
+      {
+        "type": "DAT_VERB",
+        "cueRu": "следовать за кем-то/чему-то",
+        "cueDe": "jemandem/etwas folgen",
+        "caseCore": "Dativ",
+        "probeMarker": "jemand? folgen",
+        "probeAnswer": "jemandem",
+        "examples": ["Er ist mir gefolgt.", "Folgen Sie den Anweisungen."],
+        "frequency": 60,
+        "colls": ["jemandem folgen", "den Anweisungen folgen"],
+        "contrasts": [
+          { "note": "folgen (Dat, meist mit SEIN) ≠ befolgen (Akk, mit HABEN)" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": { "wrongPraet": ["folgete"], "morphNoise": ["add-e"] }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "haben", "wrongPart2": ["gefolgen"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "gratulieren",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "gratulierte",
+      "part2": "gratuliert",
+      "pres3sg": "gratuliert",
+      "stem": "gratulier"
+    },
+    "frames": [
+      {
+        "type": "DAT_VERB",
+        "cueRu": "поздравить кого-то (с чем-то)",
+        "cueDe": "jemandem (zu etwas) gratulieren",
+        "caseCore": "Dativ",
+        "probeMarker": "jemand? gratulieren",
+        "probeAnswer": "jemandem",
+        "examples": [
+          "Ich gratuliere dir.",
+          "Wir gratulieren ihm zum Geburtstag."
+        ],
+        "frequency": 55,
+        "colls": [
+          "jemandem gratulieren",
+          "zum Geburtstag gratulieren",
+          "zur Prüfung gratulieren"
+        ],
+        "contrasts": [
+          { "note": "gratulieren (Dat, zu + Dat) ≠ beglückwünschen (Akk)" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["gratulierete"],
+              "morphNoise": ["add-e"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["gegratuliert"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "zuhören",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "hörte zu",
+      "part2": "zugehört",
+      "pres3sg": "hört zu",
+      "stem": "hör"
+    },
+    "frames": [
+      {
+        "type": "DAT_VERB",
+        "cueRu": "слушать (внимательно) кого-то",
+        "cueDe": "jemandem zuhören",
+        "caseCore": "Dativ",
+        "probeMarker": "jemand? zuhören",
+        "probeAnswer": "jemandem",
+        "examples": ["Hör mir bitte zu.", "Sie hört dem Lehrer aufmerksam zu."],
+        "frequency": 58,
+        "colls": ["jemandem zuhören", "aufmerksam zuhören"],
+        "contrasts": [
+          { "note": "zuhören (Dat, separabel) ≠ hören (Akk, nicht separabel)" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["hörte"],
+              "morphNoise": ["drop-particle"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {
+              "wrongAux": "sein",
+              "wrongPart2": ["angehört", "gehört zu"]
+            }
+          },
+          "SYNTAX": {
+            "strategy": "STATIC",
+            "payload": { "errors": ["weil er hört zu", "hat zu gehört"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "geben",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "gab",
+      "part2": "gegeben",
+      "pres3sg": "gibt",
+      "stem": "geb"
+    },
+    "frames": [
+      {
+        "type": "NOM_DAT_AKK",
+        "cueRu": "дать кому-то что-то",
+        "cueDe": "jemandem etwas geben",
+        "caseCore": "Nom–Dat–Akk",
+        "probeMarker": "jemand? geben",
+        "probeAnswer": "jemandem",
+        "examples": ["Ich gebe dir das Buch.", "Sie gab dem Kind eine Chance."],
+        "frequency": 95,
+        "colls": [
+          "jemandem etwas geben",
+          "eine Chance geben",
+          "jemandem Bescheid geben"
+        ],
+        "contrasts": [
+          { "note": "geben (Dat+Akk) ≠ schenken (Dat+Akk, дарить)" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["schenken"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["gebte", "gabte"],
+              "morphNoise": ["add-te", "wrong-ablaut"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {
+              "wrongAux": "sein",
+              "wrongPart2": ["gegebenen", "gegebt"]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "zeigen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "zeigte",
+      "part2": "gezeigt",
+      "pres3sg": "zeigt",
+      "stem": "zeig"
+    },
+    "frames": [
+      {
+        "type": "NOM_DAT_AKK",
+        "cueRu": "показать кому-то что-то",
+        "cueDe": "jemandem etwas zeigen",
+        "caseCore": "Nom–Dat–Akk",
+        "probeMarker": "jemand? zeigen",
+        "probeAnswer": "jemandem",
+        "examples": [
+          "Er zeigt ihr die Fotos.",
+          "Kannst du mir den Weg zeigen?"
+        ],
+        "frequency": 85,
+        "colls": [
+          "jemandem etwas zeigen",
+          "den Weg zeigen",
+          "ein Beispiel zeigen"
+        ],
+        "contrasts": [
+          {
+            "note": "zeigen (Dat+Akk) ≠ vorführen (Akk) / ansehen (Akk, смотреть)"
+          }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["vorführen"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": { "wrongPraet": ["zeigete"], "morphNoise": ["add-e"] }
+          },
+          "PART2_AUX": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPart2": ["gezeiget", "gezeigtet"],
+              "wrongAux": "sein"
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "erklären",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "erklärte",
+      "part2": "erklärt",
+      "pres3sg": "erklärt",
+      "stem": "erklär"
+    },
+    "frames": [
+      {
+        "type": "NOM_DAT_AKK",
+        "cueRu": "объяснить кому-то что-то",
+        "cueDe": "jemandem etwas erklären",
+        "caseCore": "Nom–Dat–Akk",
+        "probeMarker": "jemand? erklären",
+        "probeAnswer": "jemandem",
+        "examples": [
+          "Sie erklärt ihm die Aufgabe.",
+          "Er erklärte dem Kunden den Vertrag."
+        ],
+        "frequency": 80,
+        "colls": [
+          "jemandem etwas erklären",
+          "den Unterschied erklären",
+          "die Regeln erklären"
+        ],
+        "contrasts": [{ "note": "erklären (Dat+Akk) ≠ beschreiben (Akk)" }],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["beschreiben"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["erklarte", "erklärten"],
+              "morphNoise": ["umlaut-loss", "plural-form"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPart2": ["geerklärt", "erklärtet"],
+              "wrongAux": "sein"
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "schicken",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "schickte",
+      "part2": "geschickt",
+      "pres3sg": "schickt",
+      "stem": "schick"
+    },
+    "frames": [
+      {
+        "type": "NOM_DAT_AKK",
+        "cueRu": "послать/отправить кому-то что-то",
+        "cueDe": "jemandem etwas schicken (an + Akk)",
+        "caseCore": "Nom–Dat–Akk",
+        "probeMarker": "jemand? schicken",
+        "probeAnswer": "jemandem",
+        "examples": [
+          "Ich schicke dir eine E-Mail.",
+          "Wir schicken dem Kunden die Unterlagen."
+        ],
+        "frequency": 70,
+        "colls": [
+          "jemandem etwas schicken",
+          "an die Adresse schicken",
+          "per E-Mail schicken"
+        ],
+        "contrasts": [
+          { "note": "schicken (Dat / an + Akk) ≈ senden (sandte/gesandt)" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["senden"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": { "wrongPraet": ["schickete"], "morphNoise": ["add-e"] }
+          },
+          "PART2_AUX": {
+            "strategy": "MORPH_NOISE",
+            "payload": { "wrongPart2": ["geschicken"], "wrongAux": "sein" }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "bringen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "brachte",
+      "part2": "gebracht",
+      "pres3sg": "bringt",
+      "stem": "bring"
+    },
+    "frames": [
+      {
+        "type": "NOM_DAT_AKK",
+        "cueRu": "принести/привезти кому-то что-то",
+        "cueDe": "jemandem etwas bringen",
+        "caseCore": "Nom–Dat–Akk",
+        "probeMarker": "jemand? bringen",
+        "probeAnswer": "jemandem",
+        "examples": [
+          "Kannst du mir das Wasser bringen?",
+          "Er brachte dem Lehrer die Unterlagen."
+        ],
+        "frequency": 88,
+        "colls": [
+          "jemandem etwas bringen",
+          "zur Arbeit bringen",
+          "nach Hause bringen"
+        ],
+        "contrasts": [
+          {
+            "note": "bringen (Dat+Akk) ≠ holen (Akk, сходить и принести обратно)"
+          }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["holen"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["bringte"],
+              "morphNoise": ["weak-past"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPart2": ["gebringed", "gebrachtet"],
+              "wrongAux": "sein"
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "leihen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "lieh",
+      "part2": "geliehen",
+      "pres3sg": "leiht",
+      "stem": "leih"
+    },
+    "frames": [
+      {
+        "type": "NOM_DAT_AKK",
+        "cueRu": "одолжить кому-то что-то",
+        "cueDe": "jemandem etwas leihen",
+        "caseCore": "Nom–Dat–Akk",
+        "probeMarker": "jemand? leihen",
+        "probeAnswer": "jemandem",
+        "examples": ["Ich leihe dir mein Fahrrad.", "Er lieh dem Freund Geld."],
+        "frequency": 60,
+        "colls": [
+          "jemandem Geld leihen",
+          "jemandem ein Buch leihen",
+          "sich (Dat) etwas leihen"
+        ],
+        "contrasts": [
+          {
+            "note": "leihen (Dat+Akk) ≈ borgen (разг.) / ausleihen (брать/давать напрокат)"
+          }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["jemanden", "jemand"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["borgen", "ausleihen"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": { "wrongPraet": ["leihte"], "morphNoise": ["weak-past"] }
+          },
+          "PART2_AUX": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPart2": ["geleihen", "geleihert"],
+              "wrongAux": "sein"
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
     "lemma": "warten",
-    "cue": "auf etwas warten",
-    "translation": "ждать чего-то",
-    "questions": [
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "wartete",
+      "part2": "gewartet",
+      "pres3sg": "wartet",
+      "stem": "wart"
+    },
+    "frames": [
       {
-        "prompt": "Какой предлог нужен для warten?",
-        "options": ["auf", "an", "für"],
-        "answer": "auf"
+        "type": "PREP_AKK",
+        "cueRu": "ждать кого-то/чего-то",
+        "cueDe": "auf etwas warten",
+        "prepCase": "auf + Akk",
+        "probeMarker": "Wir warten ___ Bus.",
+        "probeAnswer": "auf den",
+        "examples": ["Ich warte auf die Antwort.", "Wir warten auf den Zug."],
+        "frequency": 90,
+        "colls": [
+          "auf den Zug warten",
+          "auf die Antwort warten",
+          "auf Hilfe warten"
+        ],
+        "contrasts": [
+          { "note": "warten auf (Akk) ≠ erwarten (Akk, без предлога)" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["auf dem", "auf der"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["erwarten"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["warteten", "wartte"],
+              "morphNoise": ["double-t", "plural-form"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "MORPH_NOISE",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["gewarteten"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "denken",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "dachte",
+      "part2": "gedacht",
+      "pres3sg": "denkt",
+      "stem": "denk"
+    },
+    "frames": [
+      {
+        "type": "PREP_AKK",
+        "cueRu": "думать о (ком-то/чём-то)",
+        "cueDe": "an etwas denken",
+        "prepCase": "an + Akk",
+        "probeMarker": "Ich denke ___ Urlaub.",
+        "probeAnswer": "an den",
+        "examples": ["Ich denke an dich.", "Er denkt an den Urlaub."],
+        "frequency": 88,
+        "colls": [
+          "an dich denken",
+          "an die Arbeit denken",
+          "an den Plan denken"
+        ],
+        "contrasts": [{ "note": "denken an (Akk) ≠ nachdenken über (Akk)" }],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["an dem", "an der"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["nachdenken"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": { "wrongPraet": ["denkte"], "morphNoise": ["weak-past"] }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {
+              "wrongAux": "sein",
+              "wrongPart2": ["gedachtet", "gedenkt"]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "sprechen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "sprach",
+      "part2": "gesprochen",
+      "pres3sg": "spricht",
+      "stem": "sprech"
+    },
+    "frames": [
+      {
+        "type": "PREP_AKK",
+        "cueRu": "говорить о (чём-то)",
+        "cueDe": "über etwas sprechen",
+        "prepCase": "über + Akk",
+        "probeMarker": "Wir sprechen ___ Thema.",
+        "probeAnswer": "über das",
+        "examples": [
+          "Wir sprechen über das Thema.",
+          "Sie sprach über die Reise."
+        ],
+        "frequency": 86,
+        "colls": [
+          "über das Thema sprechen",
+          "über Politik sprechen",
+          "über Probleme sprechen"
+        ],
+        "contrasts": [{ "note": "sprechen über (Akk) ≠ sprechen mit (Dat)" }],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["über dem", "über der"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["sprech"],
+              "morphNoise": ["stem-as-past"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {
+              "wrongAux": "sein",
+              "wrongPart2": ["gesprecht", "gesprochenen"]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "sich freuen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "freute sich",
+      "part2": "gefreut",
+      "pres3sg": "freut sich",
+      "stem": "freu"
+    },
+    "frames": [
+      {
+        "type": "PREP_AKK",
+        "cueRu": "радоваться (тому, что будет)",
+        "cueDe": "sich auf etwas freuen",
+        "prepCase": "auf + Akk",
+        "probeMarker": "Ich freue mich ___ Wochenende.",
+        "probeAnswer": "auf das",
+        "examples": [
+          "Ich freue mich auf das Wochenende.",
+          "Sie freut sich auf den Besuch."
+        ],
+        "frequency": 84,
+        "colls": ["sich auf die Reise freuen", "sich auf den Urlaub freuen"],
+        "contrasts": [
+          {
+            "note": "sich freuen auf (Akk, будущее) ≠ sich freuen über (Akk, уже случилось)"
+          }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["auf dem", "auf der"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["freutete sich"],
+              "morphNoise": ["add-e"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["gefreuet"] }
+          }
+        }
       },
       {
-        "prompt": "Полная связка с артиклем: Wir warten ___ Bus.",
-        "options": ["auf den", "auf dem", "an den"],
-        "answer": "auf den"
-      },
+        "type": "PREP_AKK",
+        "cueRu": "радоваться (тому, что уже есть)",
+        "cueDe": "sich über etwas freuen",
+        "prepCase": "über + Akk",
+        "probeMarker": "Ich freue mich ___ Geschenk.",
+        "probeAnswer": "über das",
+        "examples": [
+          "Ich freue mich über das Geschenk.",
+          "Er freut sich über die Nachricht."
+        ],
+        "frequency": 82,
+        "colls": ["sich über die Note freuen", "sich über das Ergebnis freuen"],
+        "contrasts": [
+          { "note": "sich freuen über (Akk) ≠ sich freuen auf (Akk)" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["über dem", "über der"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["freute"],
+              "morphNoise": ["drop-reflexive"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["gefreut sich"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "sich erinnern",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "erinnerte sich",
+      "part2": "erinnert",
+      "pres3sg": "erinnert sich",
+      "stem": "erinner"
+    },
+    "frames": [
       {
-        "prompt": "Perfekt (er/sie)",
-        "options": ["hat gewartet", "ist gewartet", "hat ge warten"],
-        "answer": "hat gewartet"
+        "type": "PREP_AKK",
+        "cueRu": "вспоминать о (ком-то/чём-то)",
+        "cueDe": "sich an etwas erinnern",
+        "prepCase": "an + Akk",
+        "probeMarker": "Er erinnert sich ___ Termin.",
+        "probeAnswer": "an den",
+        "examples": [
+          "Er erinnert sich an den Termin.",
+          "Ich erinnere mich an dich."
+        ],
+        "frequency": 83,
+        "colls": [
+          "sich an die Kindheit erinnern",
+          "sich an den Namen erinnern"
+        ],
+        "contrasts": [{ "note": "sich erinnern an (Akk) ≠ vergessen (Akk)" }],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["an dem", "an der"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["erinnere sich"],
+              "morphNoise": ["present-as-past"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "MORPH_NOISE",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["geerinnert"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "sich bewerben",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "bewarb sich",
+      "part2": "beworben",
+      "pres3sg": "bewirbt sich",
+      "stem": "bewerb"
+    },
+    "frames": [
+      {
+        "type": "PREP_AKK",
+        "cueRu": "подаваться на (работу/позицию)",
+        "cueDe": "sich um etwas bewerben (bei + Dat)",
+        "prepCase": "um + Akk",
+        "probeMarker": "Sie bewirbt sich ___ Stelle.",
+        "probeAnswer": "um die",
+        "examples": [
+          "Sie bewirbt sich um die Stelle.",
+          "Er hat sich um ein Stipendium beworben."
+        ],
+        "frequency": 78,
+        "colls": [
+          "sich um eine Stelle bewerben",
+          "sich um ein Stipendium bewerben"
+        ],
+        "contrasts": [
+          {
+            "note": "sich bewerben um (Akk) ≠ sich bewerben bei (Dat, адресат)"
+          }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["für die", "bei der"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["bewirbte sich"],
+              "morphNoise": ["weak-past"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {
+              "wrongAux": "sein",
+              "wrongPart2": ["beworbenen", "beworben sich"]
+            }
+          },
+          "SYNTAX": {
+            "strategy": "STATIC",
+            "payload": {
+              "errors": ["weil sie bewirbt sich", "hat sich um beworben"]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "sich interessieren",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "interessierte sich",
+      "part2": "interessiert",
+      "pres3sg": "interessiert sich",
+      "stem": "interessier"
+    },
+    "frames": [
+      {
+        "type": "PREP_AKK",
+        "cueRu": "интересоваться чем-то",
+        "cueDe": "sich für etwas interessieren",
+        "prepCase": "für + Akk",
+        "probeMarker": "Ich interessiere mich ___ Musik.",
+        "probeAnswer": "für die",
+        "examples": [
+          "Ich interessiere mich für Musik.",
+          "Sie interessiert sich für Politik."
+        ],
+        "frequency": 80,
+        "colls": [
+          "sich für Kunst interessieren",
+          "sich für Geschichte interessieren"
+        ],
+        "contrasts": [
+          { "note": "sich interessieren für (Akk) ≠ sich kümmern um (Akk)" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["an der", "über die"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["interessierte"],
+              "morphNoise": ["drop-reflexive"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["interessieret"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "sprechen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "sprach",
+      "part2": "gesprochen",
+      "pres3sg": "spricht",
+      "stem": "sprech"
+    },
+    "frames": [
+      {
+        "type": "PREP_DAT",
+        "cueRu": "говорить с кем-то",
+        "cueDe": "mit jemandem sprechen",
+        "prepCase": "mit + Dat",
+        "probeMarker": "Wir sprechen ___ Lehrer.",
+        "probeAnswer": "mit dem",
+        "examples": ["Ich spreche mit dir.", "Wir sprechen mit dem Lehrer."],
+        "frequency": 86,
+        "colls": [
+          "mit jemandem sprechen",
+          "mit dem Chef sprechen",
+          "mit Freunden sprechen"
+        ],
+        "contrasts": [{ "note": "sprechen mit (Dat) ≠ sprechen über (Akk)" }],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["mit den", "mit der"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["reden", "sich unterhalten"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["sprech", "sprachte"],
+              "morphNoise": ["stem-as-past", "add-te"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {
+              "wrongAux": "sein",
+              "wrongPart2": ["gesprecht", "gesprochenen"]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "teilnehmen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "nahm teil",
+      "part2": "teilgenommen",
+      "pres3sg": "nimmt teil",
+      "stem": "nehm"
+    },
+    "frames": [
+      {
+        "type": "PREP_DAT",
+        "cueRu": "участвовать в чём-то",
+        "cueDe": "an etwas teilnehmen",
+        "prepCase": "an + Dat",
+        "probeMarker": "Er nimmt ___ Projekt teil.",
+        "probeAnswer": "an dem",
+        "examples": [
+          "Sie nimmt an dem Kurs teil.",
+          "Wir haben an der Besprechung teilgenommen."
+        ],
+        "frequency": 84,
+        "colls": [
+          "an der Besprechung teilnehmen",
+          "an einem Kurs teilnehmen",
+          "an Projekten teilnehmen"
+        ],
+        "contrasts": [
+          { "note": "teilnehmen an (Dat, separabel) ≈ mitmachen (bei + Dat)" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["an den", "bei dem"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["nahmte teil", "nahm Teil"],
+              "morphNoise": ["add-te", "wrong-capitalization"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["teil genommen"] }
+          },
+          "SYNTAX": {
+            "strategy": "STATIC",
+            "payload": { "errors": ["weil er nimmt teil", "hat teil genommen"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "träumen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "träumte",
+      "part2": "geträumt",
+      "pres3sg": "träumt",
+      "stem": "träum"
+    },
+    "frames": [
+      {
+        "type": "PREP_DAT",
+        "cueRu": "мечтать о чём-то",
+        "cueDe": "von etwas träumen",
+        "prepCase": "von + Dat",
+        "probeMarker": "Ich träume ___ Urlaub.",
+        "probeAnswer": "von dem",
+        "examples": ["Ich träume von der Reise.", "Er träumt von einem Haus."],
+        "frequency": 78,
+        "colls": [
+          "von der Zukunft träumen",
+          "von Erfolg träumen",
+          "von Ruhe träumen"
+        ],
+        "contrasts": [
+          { "note": "träumen von (Dat) ≠ über (Akk) sprechen/diskutieren" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["über den", "von den"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["sprechen", "diskutieren"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["traumte", "träumeten"],
+              "morphNoise": ["umlaut-loss", "plural-form"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "MORPH_NOISE",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["geträumet"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "sich fürchten",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "fürchtete sich",
+      "part2": "gefürchtet",
+      "pres3sg": "fürchtet sich",
+      "stem": "fürcht"
+    },
+    "frames": [
+      {
+        "type": "PREP_DAT",
+        "cueRu": "бояться чего-то",
+        "cueDe": "sich vor etwas fürchten",
+        "prepCase": "vor + Dat",
+        "probeMarker": "Sie fürchtet sich ___ Hund.",
+        "probeAnswer": "vor dem",
+        "examples": [
+          "Sie fürchtet sich vor dem Hund.",
+          "Viele fürchten sich vor Prüfungen."
+        ],
+        "frequency": 76,
+        "colls": ["sich vor Hunden fürchten", "sich vor Fehlern fürchten"],
+        "contrasts": [
+          {
+            "note": "sich fürchten vor (Dat) ≈ Angst vor (Dat) haben; ≠ sich sorgen um (Akk)"
+          }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["vor den", "für die"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["fürchtete"],
+              "morphNoise": ["drop-reflexive"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {
+              "wrongAux": "sein",
+              "wrongPart2": ["gefürchtete", "sich vor gefürchtet"]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "arbeiten",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "arbeitete",
+      "part2": "gearbeitet",
+      "pres3sg": "arbeitet",
+      "stem": "arbeit"
+    },
+    "frames": [
+      {
+        "type": "PREP_DAT",
+        "cueRu": "работать над чем-то",
+        "cueDe": "an etwas arbeiten",
+        "prepCase": "an + Dat",
+        "probeMarker": "Er arbeitet ___ Bericht.",
+        "probeAnswer": "an dem",
+        "examples": [
+          "Er arbeitet an dem Bericht.",
+          "Wir arbeiten an einem neuen Projekt."
+        ],
+        "frequency": 80,
+        "colls": ["an einem Projekt arbeiten", "an der Lösung arbeiten"],
+        "contrasts": [
+          {
+            "note": "arbeiten an (Dat) ≠ arbeiten bei (Dat, место работы) ≠ bearbeiten (Akk)"
+          }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["bei dem", "an den"] }
+          },
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["bearbeiten"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["arbeite", "arbeitetete"],
+              "morphNoise": ["present-as-past", "double-suffix"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongAux": "sein",
+              "wrongPart2": ["gearbeit", "gearbeitetet"]
+            }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "abhängen",
+    "aux": "HABEN",
+    "morph": {
+      "praet3sg": "hing ab",
+      "part2": "abgehangen",
+      "pres3sg": "hängt ab",
+      "stem": "häng"
+    },
+    "frames": [
+      {
+        "type": "PREP_DAT",
+        "cueRu": "зависеть от чего-то",
+        "cueDe": "von etwas abhängen",
+        "prepCase": "von + Dat",
+        "probeMarker": "Es hängt ___ Wetter ab.",
+        "probeAnswer": "von dem",
+        "examples": [
+          "Es hängt vom Wetter ab.",
+          "Der Preis hängt von der Nachfrage ab."
+        ],
+        "frequency": 82,
+        "colls": ["von der Situation abhängen", "vom Zufall abhängen"],
+        "contrasts": [
+          { "note": "abhängen von (Dat, separabel) ≠ ankommen auf (Akk)" }
+        ],
+        "distractors": {
+          "CASE_ENDING": {
+            "strategy": "PATTERN",
+            "payload": { "endings": ["an dem", "von den"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["hängte ab", "hang ab"],
+              "morphNoise": ["weak-past", "umlaut-loss"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "sein", "wrongPart2": ["abgehängt"] }
+          },
+          "SYNTAX": {
+            "strategy": "STATIC",
+            "payload": { "errors": ["weil es hängt ab", "hat ab gehangen"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "gehen",
+    "aux": "SEIN",
+    "morph": {
+      "praet3sg": "ging",
+      "part2": "gegangen",
+      "pres3sg": "geht",
+      "stem": "geh"
+    },
+    "frames": [
+      {
+        "type": "MOV_STATE",
+        "cueRu": "идти/уходить",
+        "cueDe": "gehen (Perfekt mit sein)",
+        "probeMarker": "Perfekt: Er ___ nach Hause gegangen.",
+        "probeAnswer": "ist",
+        "examples": ["Er ist nach Hause gegangen.", "Wir gingen ins Kino."],
+        "frequency": 92,
+        "colls": ["nach Hause gehen", "ins Kino gehen", "spazieren gehen"],
+        "contrasts": [
+          { "note": "gehen (sein) ≠ fahren (haben/sein je nach Kontext)" }
+        ],
+        "distractors": {
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["fahren", "laufen"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["gehte", "gingte"],
+              "morphNoise": ["weak-past", "add-te"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {
+              "wrongAux": "hat",
+              "wrongPart2": ["gegeht", "gegange"]
+            }
+          },
+          "SYNTAX": {
+            "strategy": "STATIC",
+            "payload": { "errors": ["weil er ist gegangen", "hat gegangen"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "kommen",
+    "aux": "SEIN",
+    "morph": {
+      "praet3sg": "kam",
+      "part2": "gekommen",
+      "pres3sg": "kommt",
+      "stem": "komm"
+    },
+    "frames": [
+      {
+        "type": "MOV_STATE",
+        "cueRu": "приходить/приезжать",
+        "cueDe": "kommen (Perfekt mit sein)",
+        "probeMarker": "Perfekt: Sie ___ spät gekommen.",
+        "probeAnswer": "ist",
+        "examples": ["Er ist pünktlich gekommen.", "Sie kam zu spät."],
+        "frequency": 90,
+        "colls": ["zu spät kommen", "zur Arbeit kommen", "nach Hause kommen"],
+        "contrasts": [{ "note": "kommen (sein) ≠ bringen (haben)" }],
+        "distractors": {
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["bringen", "ankommen"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["kommte", "kamte"],
+              "morphNoise": ["weak-past"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {
+              "wrongAux": "hat",
+              "wrongPart2": ["gekommt", "gekommenen"]
+            }
+          },
+          "SYNTAX": {
+            "strategy": "STATIC",
+            "payload": { "errors": ["weil er ist gekommen", "hat gekommen"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "bleiben",
+    "aux": "SEIN",
+    "morph": {
+      "praet3sg": "blieb",
+      "part2": "geblieben",
+      "pres3sg": "bleibt",
+      "stem": "bleib"
+    },
+    "frames": [
+      {
+        "type": "MOV_STATE",
+        "cueRu": "оставаться",
+        "cueDe": "bleiben (Perfekt mit sein)",
+        "probeMarker": "Perfekt: Er ___ zu Hause geblieben.",
+        "probeAnswer": "ist",
+        "examples": ["Er ist zu Hause geblieben.", "Sie blieb ruhig."],
+        "frequency": 88,
+        "colls": ["zu Hause bleiben", "im Bett bleiben", "ruhig bleiben"],
+        "contrasts": [{ "note": "bleiben (sein) ≠ lassen/halten (haben)" }],
+        "distractors": {
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["lassen", "halten"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["bleibte", "bliebte"],
+              "morphNoise": ["weak-past", "add-te"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": {
+              "wrongAux": "hat",
+              "wrongPart2": ["gebleibt", "geblieb"]
+            }
+          },
+          "SYNTAX": {
+            "strategy": "STATIC",
+            "payload": { "errors": ["weil er ist geblieben", "hat geblieben"] }
+          }
+        }
+      }
+    ]
+  },
+  {
+    "lemma": "passieren",
+    "aux": "SEIN",
+    "morph": {
+      "praet3sg": "passierte",
+      "part2": "passiert",
+      "pres3sg": "passiert",
+      "stem": "passier"
+    },
+    "frames": [
+      {
+        "type": "MOV_STATE",
+        "cueRu": "случаться/происходить",
+        "cueDe": "passieren (Perfekt mit sein)",
+        "probeMarker": "Perfekt: Es ___ gestern passiert.",
+        "probeAnswer": "ist",
+        "examples": ["Es ist etwas Seltsames passiert.", "Was passierte dann?"],
+        "frequency": 80,
+        "colls": ["es ist passiert", "einem passiert etwas"],
+        "contrasts": [
+          {
+            "note": "passieren (sein) ≈ geschehen (S); ≠ vorkommen (sein, разг.)"
+          }
+        ],
+        "distractors": {
+          "LEMMA": {
+            "strategy": "LEXICAL_NEIGHBOR",
+            "payload": { "neighbors": ["geschehen", "vorkommen"] }
+          },
+          "PRAET": {
+            "strategy": "MORPH_NOISE",
+            "payload": {
+              "wrongPraet": ["passiert", "passierete"],
+              "morphNoise": ["present-as-past", "double-suffix"]
+            }
+          },
+          "PART2_AUX": {
+            "strategy": "STATIC",
+            "payload": { "wrongAux": "hat", "wrongPart2": ["gepassiert"] }
+          },
+          "SYNTAX": {
+            "strategy": "STATIC",
+            "payload": { "errors": ["weil es ist passiert", "hat passiert"] }
+          }
+        }
       }
     ]
   }
